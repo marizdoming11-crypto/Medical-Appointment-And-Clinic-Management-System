@@ -78,6 +78,11 @@ type AddPatientResponse = {
   temporaryPassword?: string;
 };
 
+type ActionResponse = {
+  success: boolean;
+  message: string;
+};
+
 const initialPatientForm: PatientForm = {
   email: "",
   first_name: "",
@@ -102,6 +107,7 @@ function PatientsPage() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Add Patient states
   const [showAddModal, setShowAddModal] = useState(false);
@@ -109,9 +115,6 @@ function PatientsPage() {
     useState<PatientForm>(initialPatientForm);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
-
-  // Refresh table after adding a patient
-  const [refreshKey, setRefreshKey] = useState(0);
 
   // Temporary password states
   const [generatedPassword, setGeneratedPassword] = useState("");
@@ -125,7 +128,25 @@ function PatientsPage() {
   const [viewLoading, setViewLoading] = useState(false);
   const [viewError, setViewError] = useState("");
 
-  // Current admin information
+  // Edit Patient states
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingPatientId, setEditingPatientId] =
+    useState<number | null>(null);
+  const [updating, setUpdating] = useState(false);
+  const [editError, setEditError] = useState("");
+
+  // Delete Patient states
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletingPatient, setDeletingPatient] =
+    useState<Patient | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+
+  // API URL
+  const apiUrl =
+    import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+
+  // Current administrator
   const user = (() => {
     try {
       const savedUser = sessionStorage.getItem("authUser");
@@ -134,9 +155,6 @@ function PatientsPage() {
       return null;
     }
   })();
-
-  const apiUrl =
-    import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
   // ========================================
   // FETCH PATIENTS
@@ -303,7 +321,6 @@ function PatientsPage() {
 
       setShowAddModal(false);
       setPatientForm(initialPatientForm);
-
       setRefreshKey((previous) => previous + 1);
     } catch (error) {
       console.error("Add patient error:", error);
@@ -317,10 +334,6 @@ function PatientsPage() {
       setSaving(false);
     }
   };
-
-  // ========================================
-  // CLOSE ADD PATIENT MODAL
-  // ========================================
 
   const handleCloseAddModal = () => {
     if (saving) return;
@@ -384,14 +397,223 @@ function PatientsPage() {
     }
   };
 
-  // ========================================
-  // CLOSE VIEW PATIENT MODAL
-  // ========================================
-
   const handleCloseViewModal = () => {
     setShowViewModal(false);
     setSelectedPatient(null);
     setViewError("");
+  };
+
+  // ========================================
+  // EDIT PATIENT
+  // ========================================
+
+  const handleOpenEditModal = (patient: Patient) => {
+    setEditingPatientId(patient.patient_id);
+
+    setPatientForm({
+      email: patient.email || "",
+      first_name: patient.first_name || "",
+      middle_name: patient.middle_name || "",
+      last_name: patient.last_name || "",
+      birth_date: patient.birth_date
+        ? patient.birth_date.split("T")[0].split(" ")[0]
+        : "",
+      sex: patient.sex || "",
+      contact_number: patient.contact_number || "",
+      address: patient.address || "",
+    });
+
+    setEditError("");
+    setShowEditModal(true);
+  };
+
+  const handleUpdatePatient = async (
+    event: FormEvent<HTMLFormElement>
+  ) => {
+    event.preventDefault();
+    setEditError("");
+
+    if (editingPatientId === null) return;
+
+    if (
+      !patientForm.email.trim() ||
+      !patientForm.first_name.trim() ||
+      !patientForm.last_name.trim()
+    ) {
+      setEditError(
+        "Email, first name, and last name are required."
+      );
+      return;
+    }
+
+    if (
+      patientForm.contact_number &&
+      !/^09\d{9}$/.test(patientForm.contact_number)
+    ) {
+      setEditError(
+        "Contact number must contain 11 digits and start with 09."
+      );
+      return;
+    }
+
+    if (patientForm.birth_date) {
+      const selectedDate = new Date(
+        `${patientForm.birth_date}T00:00:00`
+      );
+
+      if (
+        Number.isNaN(selectedDate.getTime()) ||
+        selectedDate > new Date()
+      ) {
+        setEditError(
+          "Please enter a valid birth date that is not in the future."
+        );
+        return;
+      }
+    }
+
+    const token = sessionStorage.getItem("authToken");
+
+    if (!token) {
+      navigate("/login", { replace: true });
+      return;
+    }
+
+    try {
+      setUpdating(true);
+
+      const response = await fetch(
+        `${apiUrl}/patients/${editingPatientId}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            ...patientForm,
+            email: patientForm.email.trim(),
+            first_name: patientForm.first_name.trim(),
+            middle_name: patientForm.middle_name.trim(),
+            last_name: patientForm.last_name.trim(),
+            contact_number: patientForm.contact_number.trim(),
+            address: patientForm.address.trim(),
+          }),
+        }
+      );
+
+      const data: ActionResponse = await response.json();
+
+      if (response.status === 401 || response.status === 403) {
+        navigate("/login", { replace: true });
+        return;
+      }
+
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data.message || "Unable to update patient."
+        );
+      }
+
+      setShowEditModal(false);
+      setEditingPatientId(null);
+      setPatientForm(initialPatientForm);
+      setRefreshKey((previous) => previous + 1);
+
+      alert(data.message || "Patient information updated successfully!");
+    } catch (error) {
+      console.error("Update patient error:", error);
+
+      setEditError(
+        error instanceof Error
+          ? error.message
+          : "Something went wrong while updating the patient."
+      );
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleCloseEditModal = () => {
+    if (updating) return;
+
+    setShowEditModal(false);
+    setEditingPatientId(null);
+    setPatientForm(initialPatientForm);
+    setEditError("");
+  };
+
+  // ========================================
+  // DELETE PATIENT
+  // ========================================
+
+  const handleOpenDeleteModal = (patient: Patient) => {
+    setDeletingPatient(patient);
+    setDeleteError("");
+    setShowDeleteModal(true);
+  };
+
+  const handleDeletePatient = async () => {
+    if (!deletingPatient) return;
+
+    const token = sessionStorage.getItem("authToken");
+
+    if (!token) {
+      navigate("/login", { replace: true });
+      return;
+    }
+
+    try {
+      setDeleting(true);
+      setDeleteError("");
+
+      const response = await fetch(
+        `${apiUrl}/patients/${deletingPatient.patient_id}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const data: ActionResponse = await response.json();
+
+      if (response.status === 401 || response.status === 403) {
+        navigate("/login", { replace: true });
+        return;
+      }
+
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data.message || "Unable to delete patient."
+        );
+      }
+
+      setShowDeleteModal(false);
+      setDeletingPatient(null);
+      setRefreshKey((previous) => previous + 1);
+
+      alert(data.message || "Patient account processed successfully.");
+    } catch (error) {
+      console.error("Delete patient error:", error);
+
+      setDeleteError(
+        error instanceof Error
+          ? error.message
+          : "Something went wrong while deleting the patient."
+      );
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleCloseDeleteModal = () => {
+    if (deleting) return;
+
+    setShowDeleteModal(false);
+    setDeletingPatient(null);
+    setDeleteError("");
   };
 
   // ========================================
@@ -426,7 +648,7 @@ function PatientsPage() {
   const formatDate = (dateValue: string | null) => {
     if (!dateValue) return "Not provided";
 
-    const datePart = dateValue.split("T")[0];
+    const datePart = dateValue.split("T")[0].split(" ")[0];
     const [year, month, day] = datePart.split("-").map(Number);
 
     if (!year || !month || !day) return "Not provided";
@@ -738,8 +960,6 @@ function PatientsPage() {
                         <td>
                           <div className="patient-actions">
 
-                            {/* VIEW PATIENT */}
-
                             <button
                               type="button"
                               title="View Patient"
@@ -750,29 +970,21 @@ function PatientsPage() {
                               <Eye size={17} />
                             </button>
 
-                            {/* EDIT PATIENT - NEXT FEATURE */}
-
                             <button
                               type="button"
                               title="Edit Patient"
                               onClick={() =>
-                                alert(
-                                  `Edit patient #${patient.patient_id} will be implemented next.`
-                                )
+                                handleOpenEditModal(patient)
                               }
                             >
                               <Pencil size={17} />
                             </button>
 
-                            {/* DELETE PATIENT - NEXT FEATURE */}
-
                             <button
                               type="button"
                               title="Delete Patient"
                               onClick={() =>
-                                alert(
-                                  `Delete patient #${patient.patient_id} will be implemented next.`
-                                )
+                                handleOpenDeleteModal(patient)
                               }
                             >
                               <Trash2 size={17} />
@@ -849,7 +1061,6 @@ function PatientsPage() {
 
                 <div className="patient-form-group full-width">
                   <label>Email Address *</label>
-
                   <input
                     type="email"
                     name="email"
@@ -862,7 +1073,6 @@ function PatientsPage() {
 
                 <div className="patient-form-group">
                   <label>First Name *</label>
-
                   <input
                     type="text"
                     name="first_name"
@@ -876,7 +1086,6 @@ function PatientsPage() {
 
                 <div className="patient-form-group">
                   <label>Middle Name</label>
-
                   <input
                     type="text"
                     name="middle_name"
@@ -889,7 +1098,6 @@ function PatientsPage() {
 
                 <div className="patient-form-group">
                   <label>Last Name *</label>
-
                   <input
                     type="text"
                     name="last_name"
@@ -903,7 +1111,6 @@ function PatientsPage() {
 
                 <div className="patient-form-group">
                   <label>Birth Date</label>
-
                   <input
                     type="date"
                     name="birth_date"
@@ -915,7 +1122,6 @@ function PatientsPage() {
 
                 <div className="patient-form-group">
                   <label>Sex</label>
-
                   <select
                     name="sex"
                     value={patientForm.sex}
@@ -930,7 +1136,6 @@ function PatientsPage() {
 
                 <div className="patient-form-group">
                   <label>Contact Number</label>
-
                   <input
                     type="tel"
                     name="contact_number"
@@ -945,7 +1150,6 @@ function PatientsPage() {
 
                 <div className="patient-form-group full-width">
                   <label>Address</label>
-
                   <textarea
                     name="address"
                     value={patientForm.address}
@@ -964,7 +1168,6 @@ function PatientsPage() {
               )}
 
               <div className="patient-modal-actions">
-
                 <button
                   type="button"
                   className="patient-cancel-button"
@@ -981,7 +1184,6 @@ function PatientsPage() {
                 >
                   {saving ? "Saving..." : "Save Patient"}
                 </button>
-
               </div>
 
             </form>
@@ -1121,6 +1323,236 @@ function PatientsPage() {
                 </div>
               </>
             ) : null}
+
+          </div>
+        </div>
+      )}
+
+      {/* =====================================
+          EDIT PATIENT MODAL
+      ===================================== */}
+
+      {showEditModal && (
+        <div
+          className="patient-modal-overlay"
+          onClick={handleCloseEditModal}
+        >
+          <div
+            className="patient-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+
+            <div className="patient-modal-header">
+              <div>
+                <h2>Edit Patient Information</h2>
+                <p>
+                  Update the selected patient's personal information.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className="patient-modal-close"
+                onClick={handleCloseEditModal}
+                disabled={updating}
+                aria-label="Close modal"
+              >
+                ×
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdatePatient}>
+
+              <div className="patient-form-grid">
+
+                <div className="patient-form-group full-width">
+                  <label>Email Address *</label>
+                  <input
+                    type="email"
+                    name="email"
+                    value={patientForm.email}
+                    onChange={handlePatientFormChange}
+                    required
+                  />
+                </div>
+
+                <div className="patient-form-group">
+                  <label>First Name *</label>
+                  <input
+                    type="text"
+                    name="first_name"
+                    value={patientForm.first_name}
+                    onChange={handlePatientFormChange}
+                    maxLength={100}
+                    required
+                  />
+                </div>
+
+                <div className="patient-form-group">
+                  <label>Middle Name</label>
+                  <input
+                    type="text"
+                    name="middle_name"
+                    value={patientForm.middle_name}
+                    onChange={handlePatientFormChange}
+                    maxLength={100}
+                  />
+                </div>
+
+                <div className="patient-form-group">
+                  <label>Last Name *</label>
+                  <input
+                    type="text"
+                    name="last_name"
+                    value={patientForm.last_name}
+                    onChange={handlePatientFormChange}
+                    maxLength={100}
+                    required
+                  />
+                </div>
+
+                <div className="patient-form-group">
+                  <label>Birth Date</label>
+                  <input
+                    type="date"
+                    name="birth_date"
+                    value={patientForm.birth_date}
+                    onChange={handlePatientFormChange}
+                    max={new Date().toISOString().split("T")[0]}
+                  />
+                </div>
+
+                <div className="patient-form-group">
+                  <label>Sex</label>
+                  <select
+                    name="sex"
+                    value={patientForm.sex}
+                    onChange={handlePatientFormChange}
+                  >
+                    <option value="">Select sex</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+
+                <div className="patient-form-group">
+                  <label>Contact Number</label>
+                  <input
+                    type="tel"
+                    name="contact_number"
+                    value={patientForm.contact_number}
+                    onChange={handlePatientFormChange}
+                    placeholder="09XXXXXXXXX"
+                    maxLength={11}
+                    pattern="09[0-9]{9}"
+                    title="Enter an 11-digit number starting with 09."
+                  />
+                </div>
+
+                <div className="patient-form-group full-width">
+                  <label>Address</label>
+                  <textarea
+                    name="address"
+                    value={patientForm.address}
+                    onChange={handlePatientFormChange}
+                    placeholder="Enter complete address"
+                    rows={3}
+                  />
+                </div>
+
+              </div>
+
+              {editError && (
+                <div className="patients-error" role="alert">
+                  {editError}
+                </div>
+              )}
+
+              <div className="patient-modal-actions">
+                <button
+                  type="button"
+                  className="patient-cancel-button"
+                  onClick={handleCloseEditModal}
+                  disabled={updating}
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  className="add-patient-button"
+                  disabled={updating}
+                >
+                  {updating ? "Updating..." : "Save Changes"}
+                </button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* =====================================
+          DELETE PATIENT MODAL
+      ===================================== */}
+
+      {showDeleteModal && deletingPatient && (
+        <div
+          className="patient-modal-overlay"
+          onClick={handleCloseDeleteModal}
+        >
+          <div
+            className="patient-modal delete-patient-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+
+            <div className="delete-patient-icon">
+              <Trash2 size={30} />
+            </div>
+
+            <h2>Delete Patient?</h2>
+
+            <p>
+              Are you sure you want to delete the account of{" "}
+              <strong>
+                {deletingPatient.first_name}{" "}
+                {deletingPatient.last_name}
+              </strong>
+              ?
+            </p>
+
+            <p className="delete-patient-warning">
+              If this patient has existing appointments or medical
+              records, their profile and history will be preserved
+              and their account will be deactivated.
+            </p>
+
+            {deleteError && (
+              <div className="patients-error" role="alert">
+                {deleteError}
+              </div>
+            )}
+
+            <div className="patient-modal-actions">
+              <button
+                type="button"
+                className="patient-cancel-button"
+                onClick={handleCloseDeleteModal}
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                className="delete-confirm-button"
+                onClick={handleDeletePatient}
+                disabled={deleting}
+              >
+                {deleting ? "Processing..." : "Confirm Delete"}
+              </button>
+            </div>
 
           </div>
         </div>

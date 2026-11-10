@@ -661,3 +661,66 @@
     max-width: 100%;
   }
 }
+
+/* ========================================
+   DELETE PATIENT MODAL
+======================================== */
+
+.delete-patient-modal {
+  max-width: 480px;
+  text-align: center;
+}
+
+.delete-patient-icon {
+  width: 65px;
+  height: 65px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 18px;
+  border-radius: 50%;
+  background: #fff1f0;
+  color: #cf1322;
+}
+
+.delete-patient-modal h2 {
+  margin-bottom: 12px;
+}
+
+.delete-patient-modal > p {
+  color: #64748b;
+  line-height: 1.6;
+  margin-bottom: 15px;
+}
+
+.delete-patient-modal > p strong {
+  color: #263449;
+}
+
+.delete-patient-warning {
+  padding: 12px;
+  border-radius: 8px;
+  background: #fff7ed;
+  color: #9a3412 !important;
+  font-size: 12px !important;
+}
+
+.delete-confirm-button {
+  padding: 11px 22px;
+  border: none;
+  border-radius: 8px;
+  background: #dc3545;
+  color: white;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.delete-confirm-button:hover {
+  background: #b91c2c;
+}
+
+.delete-confirm-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

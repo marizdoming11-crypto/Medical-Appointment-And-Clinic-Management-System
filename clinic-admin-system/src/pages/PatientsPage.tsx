@@ -635,7 +635,7 @@ function PatientsPage() {
     { label: "Dashboard", icon: LayoutDashboard, path: "/dashboard" },
     { label: "Patients", icon: Users, path: "/patients" },
     { label: "Appointments", icon: CalendarDays },
-    { label: "Doctors", icon: Stethoscope },
+    { label: "Doctors", icon: Stethoscope, path: "/doctors" },
     { label: "Medical Records", icon: ClipboardList },
     { label: "Notifications", icon: Bell },
     { label: "Settings", icon: Settings },

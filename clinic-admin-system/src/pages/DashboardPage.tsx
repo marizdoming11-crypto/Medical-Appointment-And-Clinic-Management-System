@@ -172,15 +172,15 @@ function DashboardPage() {
     navigate("/login", { replace: true });
   };
 
-  const navigation = [
-    { label: "Dashboard", icon: LayoutDashboard, active: true },
-    { label: "Patients", icon: Users, active: false },
-    { label: "Appointments", icon: CalendarDays, active: false },
-    { label: "Doctors", icon: Stethoscope, active: false },
-    { label: "Medical Records", icon: ClipboardList, active: false },
-    { label: "Notifications", icon: Bell, active: false },
-    { label: "Settings", icon: Settings, active: false },
-  ];
+ const navigation = [
+  { label: "Dashboard", icon: LayoutDashboard, active: true },
+  { label: "Patients", icon: Users, active: false, path: "/patients" },
+  { label: "Appointments", icon: CalendarDays, active: false },
+  { label: "Doctors", icon: Stethoscope, active: false, path: "/doctors" },
+  { label: "Medical Records", icon: ClipboardList, active: false },
+  { label: "Notifications", icon: Bell, active: false },
+  { label: "Settings", icon: Settings, active: false },
+];
 
   const stats = [
     {
@@ -253,8 +253,8 @@ function DashboardPage() {
                 }`}
                 type="button"
               onClick={() => {
-  if (item.label === "Patients") {
-    navigate("/patients");
+  if (item.path) {
+    navigate(item.path);
   } else if (!item.active) {
     alert(`${item.label} module will be implemented next.`);
   }

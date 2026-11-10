@@ -5,6 +5,8 @@ import dotenv from "dotenv";
 import dashboardRoutes from "./routes/dashboard.routes.js";
 import healthRoutes from "./routes/health.routes.js";
 import patientRoutes from "./routes/patient.routes.js";
+import doctorRoutes from "./routes/doctor.routes.js";
+
 
 import authRoutes from "./routes/auth.routes.js";
 
@@ -42,6 +44,9 @@ app.use("/api/health", healthRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/patients", patientRoutes);
+app.use("/api/doctors", doctorRoutes);
+
+
 
 app.use((req, res) => {
   res.status(404).json({

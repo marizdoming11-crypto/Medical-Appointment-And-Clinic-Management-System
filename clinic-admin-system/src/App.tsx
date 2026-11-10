@@ -5,6 +5,7 @@ import LoginPage from "./pages/LoginPage";
 import AdminRegisterPage from "./pages/AdminRegisterPage";
 import DashboardPage from "./pages/DashboardPage";
 import PatientsPage from "./pages/PatientsPage";
+import DoctorsPage from "./pages/DoctorsPage";
 
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -31,7 +32,7 @@ function App() {
           path="/dashboard"
           element={<DashboardPage />}
         />
-
+<Route path="/doctors" element={<DoctorsPage />} />
         <Route
           path="/patients"
           element={<PatientsPage />}

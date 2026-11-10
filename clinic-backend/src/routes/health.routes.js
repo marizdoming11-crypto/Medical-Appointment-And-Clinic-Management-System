@@ -12,9 +12,8 @@ router.get("/", async (req, res) => {
       success: true,
       message: "Clinic API and MySQL are connected."
     });
-
   } catch (error) {
-    console.error("Database connection error:", error.message);
+    console.error("Database error:", error.message);
 
     res.status(503).json({
       success: false,

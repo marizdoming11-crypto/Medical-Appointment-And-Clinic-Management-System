@@ -5,10 +5,11 @@ import dotenv from "dotenv";
 
 import healthRoutes from "./routes/health.routes.js";
 
+import authRoutes from "./routes/auth.routes.js";
+
 dotenv.config();
 
 const app = express();
-
 const PORT = process.env.PORT || 5000;
 
 const allowedOrigins = (
@@ -22,7 +23,7 @@ app.use(cors({
       return callback(null, true);
     }
 
-    return callback(new Error("Origin not allowed by CORS."));
+    callback(new Error("Origin not allowed by CORS."));
   },
   credentials: true
 }));
@@ -36,10 +37,9 @@ app.get("/", (req, res) => {
   });
 });
 
-// Health check
 app.use("/api/health", healthRoutes);
+app.use("/api/auth", authRoutes);
 
-// Invalid route handler
 app.use((req, res) => {
   res.status(404).json({
     success: false,
@@ -47,9 +47,8 @@ app.use((req, res) => {
   });
 });
 
-// Global error handler
 app.use((error, req, res, next) => {
-  console.error(error);
+  console.error(error.message);
 
   res.status(500).json({
     success: false,

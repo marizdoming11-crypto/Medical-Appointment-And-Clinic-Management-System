@@ -2,8 +2,9 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-
+import dashboardRoutes from "./routes/dashboard.routes.js";
 import healthRoutes from "./routes/health.routes.js";
+import patientRoutes from "./routes/patient.routes.js";
 
 import authRoutes from "./routes/auth.routes.js";
 
@@ -39,6 +40,8 @@ app.get("/", (req, res) => {
 
 app.use("/api/health", healthRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/patients", patientRoutes);
 
 app.use((req, res) => {
   res.status(404).json({

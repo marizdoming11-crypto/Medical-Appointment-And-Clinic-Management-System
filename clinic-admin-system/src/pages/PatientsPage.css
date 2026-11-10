@@ -1,5 +1,7 @@
 
-/* PATIENTS PAGE */
+/* ========================================
+   PATIENTS PAGE
+======================================== */
 
 .patients-welcome {
   background: linear-gradient(115deg, #1b4778, #2878db);
@@ -32,6 +34,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  color: white;
 }
 
 .patient-summary {
@@ -105,10 +108,16 @@
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
+  transition: background 0.2s ease;
 }
 
 .add-patient-button:hover {
   background: #1b65bd;
+}
+
+.add-patient-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .patients-search {
@@ -166,6 +175,7 @@
   border-bottom: 1px solid #edf0f4;
   color: #526176;
   font-size: 11px;
+  vertical-align: middle;
 }
 
 .patients-table tbody tr:hover {
@@ -214,6 +224,7 @@
   font-size: 10px;
   font-weight: 600;
   text-transform: capitalize;
+  white-space: nowrap;
 }
 
 .patient-account-status.active {
@@ -283,7 +294,315 @@
   font-size: 11px;
 }
 
-/* RESPONSIVE */
+/* ========================================
+   MODAL GENERAL STYLES
+======================================== */
+
+.patient-modal-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 99999 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 20px !important;
+  box-sizing: border-box;
+  background: rgba(15, 23, 42, 0.55) !important;
+  backdrop-filter: blur(3px);
+}
+
+.patient-modal {
+  position: relative;
+  width: 100%;
+  max-width: 650px;
+  max-height: 90vh;
+  overflow-y: auto;
+  margin: auto;
+  padding: 30px;
+  box-sizing: border-box;
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 15px 45px rgba(0, 0, 0, 0.18);
+}
+
+.patient-modal h2 {
+  margin: 0 0 8px;
+  color: #26364d;
+  font-size: 25px;
+}
+
+.patient-modal p {
+  margin-bottom: 22px;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.patient-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 15px;
+  margin-bottom: 25px;
+}
+
+.patient-modal-header h2 {
+  margin: 0 0 7px;
+}
+
+.patient-modal-header p {
+  margin: 0;
+}
+
+.patient-modal-close {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  border: none;
+  border-radius: 7px;
+  background: #f1f5f9;
+  color: #64748b;
+  font-size: 23px;
+  cursor: pointer;
+}
+
+.patient-modal-close:hover {
+  background: #e2e8f0;
+  color: #1e293b;
+}
+
+/* ========================================
+   ADD PATIENT FORM
+======================================== */
+
+.patient-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.patient-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.patient-form-group label {
+  color: #334155;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.patient-form-group input,
+.patient-form-group select,
+.patient-form-group textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 11px 13px;
+  border: 1px solid #d5dce7;
+  border-radius: 8px;
+  outline: none;
+  background: #ffffff;
+  color: #334155;
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.patient-form-group input:focus,
+.patient-form-group select:focus,
+.patient-form-group textarea:focus {
+  border-color: #2875d0;
+  box-shadow: 0 0 0 3px rgba(40, 117, 208, 0.12);
+}
+
+.patient-form-group textarea {
+  resize: vertical;
+}
+
+.patient-form-group.full-width {
+  grid-column: 1 / -1;
+}
+
+.patient-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 25px;
+}
+
+.patient-modal-actions button {
+  padding: 11px 22px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.patient-modal-actions button[type="submit"] {
+  background: #2875d0;
+  color: white;
+}
+
+.patient-modal-actions button[type="button"] {
+  background: #e8edf4;
+  color: #334155;
+}
+
+/* Cancel button */
+
+.patient-cancel-button {
+  padding: 11px 22px;
+  border: none;
+  border-radius: 8px;
+  background: #e8edf4;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.patient-cancel-button:hover {
+  background: #dce4ef;
+}
+
+/* ========================================
+   TEMPORARY PASSWORD MODAL
+======================================== */
+
+.temporary-password-notice {
+  margin: 20px 0;
+  padding: 18px;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  background: #eff6ff;
+}
+
+.temporary-password-notice h3 {
+  margin: 0 0 8px;
+  color: #26364d;
+  font-size: 17px;
+}
+
+.temporary-password-notice > strong {
+  color: #26364d;
+  font-size: 17px;
+}
+
+.temporary-password-notice p {
+  margin: 8px 0 12px;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+.temporary-password-value {
+  display: block;
+  padding: 13px;
+  border: 1px dashed #93c5fd;
+  border-radius: 8px;
+  background: white;
+  color: #1d4ed8;
+  font-size: 16px;
+  font-weight: 700;
+  word-break: break-all;
+}
+
+.copy-password-button {
+  margin-top: 12px;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 8px;
+  background: #e0edff;
+  color: #1d4ed8;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.copy-password-button:hover {
+  background: #cfe2ff;
+}
+
+/* ========================================
+   VIEW PATIENT MODAL
+======================================== */
+
+.view-patient-modal {
+  max-width: 700px;
+}
+
+.view-patient-profile {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 18px;
+  margin-bottom: 22px;
+  border-radius: 12px;
+  background: #f2f7ff;
+}
+
+.view-patient-avatar {
+  width: 55px;
+  height: 55px;
+  min-width: 55px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #dceaff;
+  color: #2878db;
+}
+
+.view-patient-profile h3 {
+  margin: 0 0 6px;
+  color: #263449;
+  font-size: 18px;
+}
+
+.view-patient-profile span {
+  color: #718096;
+  font-size: 12px;
+}
+
+.view-patient-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.view-patient-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-bottom: 13px;
+  border-bottom: 1px solid #edf0f4;
+  min-width: 0;
+}
+
+.view-patient-field > span {
+  color: #8994a5;
+  font-size: 11px;
+}
+
+.view-patient-field strong {
+  color: #35445b;
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.view-patient-field.full-width {
+  grid-column: 1 / -1;
+}
+
+.view-patient-message {
+  padding: 35px 10px;
+  text-align: center;
+  color: #718096;
+  font-size: 14px;
+}
+
+/* ========================================
+   RESPONSIVE DESIGN
+======================================== */
 
 @media (max-width: 768px) {
   .patients-welcome {
@@ -301,10 +620,27 @@
 
   .patient-summary {
     width: 100%;
+    box-sizing: border-box;
   }
 
   .patients-toolbar {
     align-items: flex-start;
+  }
+}
+
+@media (max-width: 600px) {
+  .patient-modal {
+    padding: 20px;
+  }
+
+  .patient-form-grid,
+  .view-patient-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .patient-form-group.full-width,
+  .view-patient-field.full-width {
+    grid-column: auto;
   }
 }
 

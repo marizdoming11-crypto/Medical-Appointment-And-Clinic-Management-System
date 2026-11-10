@@ -1,5 +1,10 @@
 
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import {
   HeartPulse,
@@ -23,6 +28,10 @@ import {
 
 import "./PatientsPage.css";
 
+// ========================================
+// TYPES
+// ========================================
+
 type Patient = {
   patient_id: number;
   user_id: number;
@@ -45,15 +54,78 @@ type PatientsResponse = {
   message?: string;
 };
 
+type SinglePatientResponse = {
+  success: boolean;
+  patient?: Patient;
+  message?: string;
+};
+
+type PatientForm = {
+  email: string;
+  first_name: string;
+  middle_name: string;
+  last_name: string;
+  birth_date: string;
+  sex: string;
+  contact_number: string;
+  address: string;
+};
+
+type AddPatientResponse = {
+  success: boolean;
+  message: string;
+  patientId?: number;
+  temporaryPassword?: string;
+};
+
+const initialPatientForm: PatientForm = {
+  email: "",
+  first_name: "",
+  middle_name: "",
+  last_name: "",
+  birth_date: "",
+  sex: "",
+  contact_number: "",
+  address: "",
+};
+
+// ========================================
+// PATIENTS PAGE
+// ========================================
+
 function PatientsPage() {
   const navigate = useNavigate();
 
+  // General states
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
+  // Add Patient states
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [patientForm, setPatientForm] =
+    useState<PatientForm>(initialPatientForm);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState("");
+
+  // Refresh table after adding a patient
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Temporary password states
+  const [generatedPassword, setGeneratedPassword] = useState("");
+  const [createdPatientId, setCreatedPatientId] =
+    useState<number | null>(null);
+
+  // View Patient states
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [selectedPatient, setSelectedPatient] =
+    useState<Patient | null>(null);
+  const [viewLoading, setViewLoading] = useState(false);
+  const [viewError, setViewError] = useState("");
+
+  // Current admin information
   const user = (() => {
     try {
       const savedUser = sessionStorage.getItem("authUser");
@@ -62,6 +134,13 @@ function PatientsPage() {
       return null;
     }
   })();
+
+  const apiUrl =
+    import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+
+  // ========================================
+  // FETCH PATIENTS
+  // ========================================
 
   useEffect(() => {
     const fetchPatients = async () => {
@@ -75,9 +154,6 @@ function PatientsPage() {
       try {
         setLoading(true);
         setErrorMessage("");
-
-        const apiUrl =
-          import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
         const response = await fetch(
           `${apiUrl}/patients?search=${encodeURIComponent(search)}`,
@@ -96,7 +172,9 @@ function PatientsPage() {
         }
 
         if (!response.ok || !data.success) {
-          throw new Error(data.message || "Unable to retrieve patients.");
+          throw new Error(
+            data.message || "Unable to retrieve patients."
+          );
         }
 
         setPatients(data.patients || []);
@@ -114,13 +192,222 @@ function PatientsPage() {
     };
 
     fetchPatients();
-  }, [search, navigate]);
+  }, [search, navigate, refreshKey]);
+
+  // ========================================
+  // FORM INPUT HANDLING
+  // ========================================
+
+  const handlePatientFormChange = (
+    event: ChangeEvent<
+      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    >
+  ) => {
+    const { name, value } = event.target;
+
+    setPatientForm((previous) => ({
+      ...previous,
+      [name]: value,
+    }));
+  };
+
+  // ========================================
+  // ADD PATIENT
+  // ========================================
+
+  const handleAddPatient = async (
+    event: FormEvent<HTMLFormElement>
+  ) => {
+    event.preventDefault();
+    setFormError("");
+
+    if (
+      !patientForm.email.trim() ||
+      !patientForm.first_name.trim() ||
+      !patientForm.last_name.trim()
+    ) {
+      setFormError(
+        "Email, first name, and last name are required."
+      );
+      return;
+    }
+
+    if (
+      patientForm.contact_number &&
+      !/^09\d{9}$/.test(patientForm.contact_number)
+    ) {
+      setFormError(
+        "Contact number must contain 11 digits and start with 09."
+      );
+      return;
+    }
+
+    if (patientForm.birth_date) {
+      const selectedDate = new Date(
+        `${patientForm.birth_date}T00:00:00`
+      );
+
+      if (
+        Number.isNaN(selectedDate.getTime()) ||
+        selectedDate > new Date()
+      ) {
+        setFormError(
+          "Please enter a valid birth date that is not in the future."
+        );
+        return;
+      }
+    }
+
+    const token = sessionStorage.getItem("authToken");
+
+    if (!token) {
+      navigate("/login", { replace: true });
+      return;
+    }
+
+    try {
+      setSaving(true);
+
+      const response = await fetch(`${apiUrl}/patients`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          ...patientForm,
+          email: patientForm.email.trim(),
+          first_name: patientForm.first_name.trim(),
+          middle_name: patientForm.middle_name.trim(),
+          last_name: patientForm.last_name.trim(),
+          contact_number: patientForm.contact_number.trim(),
+          address: patientForm.address.trim(),
+        }),
+      });
+
+      const data: AddPatientResponse = await response.json();
+
+      if (response.status === 401 || response.status === 403) {
+        navigate("/login", { replace: true });
+        return;
+      }
+
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data.message || "Unable to add patient."
+        );
+      }
+
+      setGeneratedPassword(data.temporaryPassword || "");
+      setCreatedPatientId(data.patientId ?? null);
+
+      setShowAddModal(false);
+      setPatientForm(initialPatientForm);
+
+      setRefreshKey((previous) => previous + 1);
+    } catch (error) {
+      console.error("Add patient error:", error);
+
+      setFormError(
+        error instanceof Error
+          ? error.message
+          : "Something went wrong while adding the patient."
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ========================================
+  // CLOSE ADD PATIENT MODAL
+  // ========================================
+
+  const handleCloseAddModal = () => {
+    if (saving) return;
+
+    setShowAddModal(false);
+    setFormError("");
+    setPatientForm(initialPatientForm);
+  };
+
+  // ========================================
+  // VIEW PATIENT
+  // ========================================
+
+  const handleViewPatient = async (patientId: number) => {
+    const token = sessionStorage.getItem("authToken");
+
+    if (!token) {
+      navigate("/login", { replace: true });
+      return;
+    }
+
+    setShowViewModal(true);
+    setSelectedPatient(null);
+    setViewError("");
+    setViewLoading(true);
+
+    try {
+      const response = await fetch(
+        `${apiUrl}/patients/${patientId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const data: SinglePatientResponse = await response.json();
+
+      if (response.status === 401 || response.status === 403) {
+        navigate("/login", { replace: true });
+        return;
+      }
+
+      if (!response.ok || !data.success || !data.patient) {
+        throw new Error(
+          data.message || "Unable to retrieve patient information."
+        );
+      }
+
+      setSelectedPatient(data.patient);
+    } catch (error) {
+      console.error("View patient error:", error);
+
+      setViewError(
+        error instanceof Error
+          ? error.message
+          : "Something went wrong while retrieving patient information."
+      );
+    } finally {
+      setViewLoading(false);
+    }
+  };
+
+  // ========================================
+  // CLOSE VIEW PATIENT MODAL
+  // ========================================
+
+  const handleCloseViewModal = () => {
+    setShowViewModal(false);
+    setSelectedPatient(null);
+    setViewError("");
+  };
+
+  // ========================================
+  // LOGOUT
+  // ========================================
 
   const handleLogout = () => {
     sessionStorage.removeItem("authToken");
     sessionStorage.removeItem("authUser");
+
     navigate("/login", { replace: true });
   };
+
+  // ========================================
+  // SIDEBAR NAVIGATION
+  // ========================================
 
   const navigation = [
     { label: "Dashboard", icon: LayoutDashboard, path: "/dashboard" },
@@ -132,6 +419,10 @@ function PatientsPage() {
     { label: "Settings", icon: Settings },
   ];
 
+  // ========================================
+  // FORMAT DATE
+  // ========================================
+
   const formatDate = (dateValue: string | null) => {
     if (!dateValue) return "Not provided";
 
@@ -140,16 +431,25 @@ function PatientsPage() {
 
     if (!year || !month || !day) return "Not provided";
 
-    return new Date(year, month - 1, day).toLocaleDateString("en-PH", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
+    return new Date(year, month - 1, day).toLocaleDateString(
+      "en-PH",
+      {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }
+    );
   };
+
+  // ========================================
+  // RENDER
+  // ========================================
 
   return (
     <div className="dashboard-layout">
+
       {/* SIDEBAR OVERLAY */}
+
       {sidebarOpen && (
         <div
           className="sidebar-overlay"
@@ -158,6 +458,7 @@ function PatientsPage() {
       )}
 
       {/* SIDEBAR */}
+
       <aside
         className={`dashboard-sidebar ${
           sidebarOpen ? "sidebar-open" : ""
@@ -174,7 +475,9 @@ function PatientsPage() {
           </div>
         </div>
 
-        <div className="sidebar-section-label">MAIN MENU</div>
+        <div className="sidebar-section-label">
+          MAIN MENU
+        </div>
 
         <nav className="sidebar-navigation">
           {navigation.map((item) => {
@@ -191,7 +494,9 @@ function PatientsPage() {
                   if (item.path) {
                     navigate(item.path);
                   } else {
-                    alert(`${item.label} module will be implemented next.`);
+                    alert(
+                      `${item.label} module will be implemented next.`
+                    );
                   }
 
                   setSidebarOpen(false);
@@ -208,7 +513,9 @@ function PatientsPage() {
           <div className="sidebar-help">
             <HeartPulse size={22} />
             <strong>Clinic System</strong>
-            <p>Manage your clinic efficiently with MediCare.</p>
+            <p>
+              Manage your clinic efficiently with MediCare.
+            </p>
           </div>
 
           <button
@@ -223,8 +530,11 @@ function PatientsPage() {
       </aside>
 
       {/* MAIN CONTENT */}
+
       <main className="dashboard-main">
+
         {/* HEADER */}
+
         <header className="dashboard-header">
           <div className="header-left">
             <button
@@ -259,12 +569,22 @@ function PatientsPage() {
         </header>
 
         {/* PAGE CONTENT */}
+
         <div className="dashboard-content">
+
+          {/* WELCOME BANNER */}
+
           <section className="patients-welcome">
             <div>
-              <span className="welcome-label">PATIENT MANAGEMENT</span>
+              <span className="welcome-label">
+                PATIENT MANAGEMENT
+              </span>
+
               <h1>Patient Records</h1>
-              <p>View and manage all registered clinic patients.</p>
+
+              <p>
+                View and manage all registered clinic patients.
+              </p>
             </div>
 
             <div className="patients-welcome-icon">
@@ -273,6 +593,7 @@ function PatientsPage() {
           </section>
 
           {/* PATIENT SUMMARY */}
+
           <section className="patient-summary">
             <div className="patient-summary-icon">
               <Users size={25} />
@@ -285,19 +606,25 @@ function PatientsPage() {
           </section>
 
           {/* PATIENT TABLE */}
+
           <section className="dashboard-panel patients-table-panel">
+
             <div className="patients-toolbar">
               <div>
                 <h3>All Patients</h3>
-                <p>Patient information and account details</p>
+                <p>
+                  Patient information and account details
+                </p>
               </div>
 
               <button
                 className="add-patient-button"
                 type="button"
-                onClick={() =>
-                  alert("Add Patient form will be implemented next.")
-                }
+                onClick={() => {
+                  setFormError("");
+                  setPatientForm(initialPatientForm);
+                  setShowAddModal(true);
+                }}
               >
                 <Plus size={18} />
                 Add Patient
@@ -305,6 +632,7 @@ function PatientsPage() {
             </div>
 
             {/* SEARCH */}
+
             <div className="patients-search">
               <Search size={19} />
 
@@ -317,6 +645,7 @@ function PatientsPage() {
             </div>
 
             {/* ERROR */}
+
             {errorMessage && (
               <div className="patients-error" role="alert">
                 <strong>Unable to load patients</strong>
@@ -325,8 +654,10 @@ function PatientsPage() {
             )}
 
             {/* TABLE */}
+
             <div className="patients-table-wrapper">
               <table className="patients-table">
+
                 <thead>
                   <tr>
                     <th>Patient ID</th>
@@ -355,8 +686,11 @@ function PatientsPage() {
                   ) : (
                     patients.map((patient) => (
                       <tr key={patient.patient_id}>
+
                         <td>
-                          <strong>#{patient.patient_id}</strong>
+                          <strong>
+                            #{patient.patient_id}
+                          </strong>
                         </td>
 
                         <td>
@@ -373,6 +707,7 @@ function PatientsPage() {
                                   : ""}
                                 {patient.last_name}
                               </strong>
+
                               <span>
                                 {formatDate(patient.birth_date)}
                               </span>
@@ -382,7 +717,9 @@ function PatientsPage() {
 
                         <td>{patient.email}</td>
 
-                        <td>{patient.contact_number || "—"}</td>
+                        <td>
+                          {patient.contact_number || "—"}
+                        </td>
 
                         <td>{patient.sex || "—"}</td>
 
@@ -400,17 +737,20 @@ function PatientsPage() {
 
                         <td>
                           <div className="patient-actions">
+
+                            {/* VIEW PATIENT */}
+
                             <button
                               type="button"
                               title="View Patient"
                               onClick={() =>
-                                alert(
-                                  `View patient #${patient.patient_id} will be implemented next.`
-                                )
+                                handleViewPatient(patient.patient_id)
                               }
                             >
                               <Eye size={17} />
                             </button>
+
+                            {/* EDIT PATIENT - NEXT FEATURE */}
 
                             <button
                               type="button"
@@ -424,6 +764,8 @@ function PatientsPage() {
                               <Pencil size={17} />
                             </button>
 
+                            {/* DELETE PATIENT - NEXT FEATURE */}
+
                             <button
                               type="button"
                               title="Delete Patient"
@@ -435,12 +777,15 @@ function PatientsPage() {
                             >
                               <Trash2 size={17} />
                             </button>
+
                           </div>
                         </td>
+
                       </tr>
                     ))
                   )}
                 </tbody>
+
               </table>
             </div>
 
@@ -450,14 +795,396 @@ function PatientsPage() {
                 {patients.length === 1 ? "" : "s"}
               </span>
             </div>
+
           </section>
 
+          {/* FOOTER */}
+
           <footer className="dashboard-footer">
-            <span>© 2026 MediCare Clinic Management System</span>
+            <span>
+              © 2026 MediCare Clinic Management System
+            </span>
             <span>Administrator Portal</span>
           </footer>
+
         </div>
       </main>
+
+      {/* =====================================
+          ADD PATIENT MODAL
+      ===================================== */}
+
+      {showAddModal && (
+        <div
+          className="patient-modal-overlay"
+          onClick={handleCloseAddModal}
+        >
+          <div
+            className="patient-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+
+            <div className="patient-modal-header">
+              <div>
+                <h2>Add New Patient</h2>
+                <p>
+                  Enter the patient's personal and account information.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className="patient-modal-close"
+                onClick={handleCloseAddModal}
+                disabled={saving}
+                aria-label="Close modal"
+              >
+                ×
+              </button>
+            </div>
+
+            <form onSubmit={handleAddPatient}>
+
+              <div className="patient-form-grid">
+
+                <div className="patient-form-group full-width">
+                  <label>Email Address *</label>
+
+                  <input
+                    type="email"
+                    name="email"
+                    value={patientForm.email}
+                    onChange={handlePatientFormChange}
+                    placeholder="patient@example.com"
+                    required
+                  />
+                </div>
+
+                <div className="patient-form-group">
+                  <label>First Name *</label>
+
+                  <input
+                    type="text"
+                    name="first_name"
+                    value={patientForm.first_name}
+                    onChange={handlePatientFormChange}
+                    placeholder="Enter first name"
+                    maxLength={100}
+                    required
+                  />
+                </div>
+
+                <div className="patient-form-group">
+                  <label>Middle Name</label>
+
+                  <input
+                    type="text"
+                    name="middle_name"
+                    value={patientForm.middle_name}
+                    onChange={handlePatientFormChange}
+                    placeholder="Enter middle name"
+                    maxLength={100}
+                  />
+                </div>
+
+                <div className="patient-form-group">
+                  <label>Last Name *</label>
+
+                  <input
+                    type="text"
+                    name="last_name"
+                    value={patientForm.last_name}
+                    onChange={handlePatientFormChange}
+                    placeholder="Enter last name"
+                    maxLength={100}
+                    required
+                  />
+                </div>
+
+                <div className="patient-form-group">
+                  <label>Birth Date</label>
+
+                  <input
+                    type="date"
+                    name="birth_date"
+                    value={patientForm.birth_date}
+                    onChange={handlePatientFormChange}
+                    max={new Date().toISOString().split("T")[0]}
+                  />
+                </div>
+
+                <div className="patient-form-group">
+                  <label>Sex</label>
+
+                  <select
+                    name="sex"
+                    value={patientForm.sex}
+                    onChange={handlePatientFormChange}
+                  >
+                    <option value="">Select sex</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+
+                <div className="patient-form-group">
+                  <label>Contact Number</label>
+
+                  <input
+                    type="tel"
+                    name="contact_number"
+                    value={patientForm.contact_number}
+                    onChange={handlePatientFormChange}
+                    placeholder="09XXXXXXXXX"
+                    maxLength={11}
+                    pattern="09[0-9]{9}"
+                    title="Enter an 11-digit number starting with 09."
+                  />
+                </div>
+
+                <div className="patient-form-group full-width">
+                  <label>Address</label>
+
+                  <textarea
+                    name="address"
+                    value={patientForm.address}
+                    onChange={handlePatientFormChange}
+                    placeholder="Enter complete address"
+                    rows={3}
+                  />
+                </div>
+
+              </div>
+
+              {formError && (
+                <div className="patients-error" role="alert">
+                  {formError}
+                </div>
+              )}
+
+              <div className="patient-modal-actions">
+
+                <button
+                  type="button"
+                  className="patient-cancel-button"
+                  onClick={handleCloseAddModal}
+                  disabled={saving}
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  className="add-patient-button"
+                  disabled={saving}
+                >
+                  {saving ? "Saving..." : "Save Patient"}
+                </button>
+
+              </div>
+
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* =====================================
+          VIEW PATIENT MODAL
+      ===================================== */}
+
+      {showViewModal && (
+        <div
+          className="patient-modal-overlay"
+          onClick={handleCloseViewModal}
+        >
+          <div
+            className="patient-modal view-patient-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+
+            <div className="patient-modal-header">
+              <div>
+                <h2>Patient Information</h2>
+                <p>Complete details of the selected patient.</p>
+              </div>
+
+              <button
+                type="button"
+                className="patient-modal-close"
+                onClick={handleCloseViewModal}
+                aria-label="Close modal"
+              >
+                ×
+              </button>
+            </div>
+
+            {viewLoading ? (
+              <div className="view-patient-message">
+                Loading patient information...
+              </div>
+            ) : viewError ? (
+              <div className="patients-error" role="alert">
+                {viewError}
+              </div>
+            ) : selectedPatient ? (
+              <>
+                <div className="view-patient-profile">
+                  <div className="view-patient-avatar">
+                    <UserRound size={30} />
+                  </div>
+
+                  <div>
+                    <h3>
+                      {selectedPatient.first_name}{" "}
+                      {selectedPatient.middle_name
+                        ? `${selectedPatient.middle_name} `
+                        : ""}
+                      {selectedPatient.last_name}
+                    </h3>
+
+                    <span>
+                      Patient ID: #{selectedPatient.patient_id}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="view-patient-grid">
+
+                  <div className="view-patient-field">
+                    <span>Email Address</span>
+                    <strong>
+                      {selectedPatient.email || "Not provided"}
+                    </strong>
+                  </div>
+
+                  <div className="view-patient-field">
+                    <span>Account Status</span>
+                    <strong>
+                      <span
+                        className={`patient-account-status ${
+                          selectedPatient.account_status === "active"
+                            ? "active"
+                            : "inactive"
+                        }`}
+                      >
+                        {selectedPatient.account_status || "Unknown"}
+                      </span>
+                    </strong>
+                  </div>
+
+                  <div className="view-patient-field">
+                    <span>Birth Date</span>
+                    <strong>
+                      {formatDate(selectedPatient.birth_date)}
+                    </strong>
+                  </div>
+
+                  <div className="view-patient-field">
+                    <span>Sex</span>
+                    <strong>
+                      {selectedPatient.sex || "Not provided"}
+                    </strong>
+                  </div>
+
+                  <div className="view-patient-field">
+                    <span>Contact Number</span>
+                    <strong>
+                      {selectedPatient.contact_number || "Not provided"}
+                    </strong>
+                  </div>
+
+                  <div className="view-patient-field">
+                    <span>Registration Date</span>
+                    <strong>
+                      {formatDate(selectedPatient.created_at)}
+                    </strong>
+                  </div>
+
+                  <div className="view-patient-field full-width">
+                    <span>Complete Address</span>
+                    <strong>
+                      {selectedPatient.address || "Not provided"}
+                    </strong>
+                  </div>
+
+                </div>
+
+                <div className="patient-modal-actions">
+                  <button
+                    type="button"
+                    className="add-patient-button"
+                    onClick={handleCloseViewModal}
+                  >
+                    Close
+                  </button>
+                </div>
+              </>
+            ) : null}
+
+          </div>
+        </div>
+      )}
+
+      {/* =====================================
+          GENERATED TEMPORARY PASSWORD
+      ===================================== */}
+
+      {generatedPassword && (
+        <div className="patient-modal-overlay">
+          <div className="patient-modal password-modal">
+
+            <div className="patient-modal-header">
+              <div>
+                <h2>Patient Added Successfully!</h2>
+                <p>
+                  Patient ID: #{createdPatientId}
+                </p>
+              </div>
+            </div>
+
+            <div className="temporary-password-notice">
+              <strong>Temporary Login Password</strong>
+
+              <p>
+                Provide this password securely to the patient.
+                It will not be displayed again after closing this window.
+              </p>
+
+              <div className="temporary-password-value">
+                {generatedPassword}
+              </div>
+
+              <button
+                type="button"
+                className="copy-password-button"
+                onClick={() => {
+                  void navigator.clipboard.writeText(
+                    generatedPassword
+                  );
+                }}
+              >
+                Copy Password
+              </button>
+            </div>
+
+            <div className="patient-modal-actions">
+              <button
+                type="button"
+                className="add-patient-button"
+                onClick={() => {
+                  setGeneratedPassword("");
+                  setCreatedPatientId(null);
+                }}
+              >
+                Done
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

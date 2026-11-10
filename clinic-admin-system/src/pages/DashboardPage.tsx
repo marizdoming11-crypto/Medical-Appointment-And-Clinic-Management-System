@@ -252,15 +252,15 @@ function DashboardPage() {
                   item.active ? "active" : ""
                 }`}
                 type="button"
-                onClick={() => {
-                  if (!item.active) {
-                    alert(
-                      `${item.label} module will be implemented next.`
-                    );
-                  }
+              onClick={() => {
+  if (item.label === "Patients") {
+    navigate("/patients");
+  } else if (!item.active) {
+    alert(`${item.label} module will be implemented next.`);
+  }
 
-                  setSidebarOpen(false);
-                }}
+  setSidebarOpen(false);
+}}
               >
                 <Icon size={19} />
                 <span>{item.label}</span>

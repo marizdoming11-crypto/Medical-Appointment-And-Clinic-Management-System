@@ -10,6 +10,7 @@ import DoctorsPage from "./pages/DoctorsPage";
 import AppointmentsPage from "./pages/AppointmentsPage";
 import MedicalRecordsPage from "./pages/MedicalRecordsPage";
 import NotificationsPage from "./pages/NotificationsPage";
+import SettingsPage from "./pages/SettingsPage";
 
 // Route Protection
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -25,7 +26,10 @@ function App() {
         path="/"
         element={<Navigate to="/login" replace />}
       />
-
+<Route
+  path="/settings"
+  element={<SettingsPage />}
+/>
       {/* Public Routes */}
       <Route
         path="/login"

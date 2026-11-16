@@ -1,0 +1,11 @@
+.settings-page {
+  min-height: 100vh;
+  padding: 40px;
+  background: #f4f7fc;
+  color: #243b5a;
+}
+
+.settings-page h1 {
+  font-size: 28px;
+  margin-bottom: 10px;
+}

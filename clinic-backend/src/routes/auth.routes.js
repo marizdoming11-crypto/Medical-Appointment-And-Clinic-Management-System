@@ -4,7 +4,8 @@ import { Router } from "express";
 import {
   registerPatient,
   loginUser,
-  getCurrentUser
+  getCurrentUser,
+  changePassword
 } from "../controllers/auth.controller.js";
 
 import {
@@ -17,7 +18,13 @@ const router = Router();
 router.post("/register", registerPatient);
 router.post("/login", loginUser);
 
-// Protected route
+// Protected routes
 router.get("/me", authenticateToken, getCurrentUser);
+
+router.patch(
+  "/change-password",
+  authenticateToken,
+  changePassword
+);
 
 export default router;

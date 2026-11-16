@@ -1,11 +1,37 @@
 
 import pool from "../config/db.js";
 
-// GET: Retrieve notifications for the logged-in admin
+// Get the authenticated user's ID from the JWT payload
+const getUserId = (req) => {
+  return req.user?.userId ?? req.user?.user_id;
+};
+
+// Validate authenticated user ID
+const validateUserId = (req, res) => {
+  const userId = getUserId(req);
+
+  if (!userId || !Number.isInteger(Number(userId))) {
+    res.status(401).json({
+      success: false,
+      message: "Invalid user authentication."
+    });
+    return null;
+  }
+
+  return Number(userId);
+};
+
+// GET: Retrieve all notifications
 export const getAllNotifications = async (req, res) => {
   try {
-    const userId = req.user.user_id;
+    const userId = validateUserId(req, res);
+    if (!userId) return;
+
     const { search = "", status = "all" } = req.query;
+
+    console.log("========== NOTIFICATION DEBUG ==========");
+    console.log("Authenticated User:", req.user);
+    console.log("Notification User ID:", userId);
 
     let query = `
       SELECT
@@ -36,14 +62,20 @@ export const getAllNotifications = async (req, res) => {
 
     const [notifications] = await pool.query(query, params);
 
-    res.status(200).json({
+    console.log("Notifications Found:", notifications.length);
+    console.log("Notification Data:", notifications);
+    console.log("========================================");
+
+    return res.status(200).json({
       success: true,
       total: notifications.length,
       data: notifications
     });
+
   } catch (error) {
     console.error("Get notifications error:", error);
-    res.status(500).json({
+
+    return res.status(500).json({
       success: false,
       message: "Failed to retrieve notifications."
     });
@@ -53,7 +85,9 @@ export const getAllNotifications = async (req, res) => {
 // GET: Retrieve one notification
 export const getNotificationById = async (req, res) => {
   try {
-    const userId = req.user.user_id;
+    const userId = validateUserId(req, res);
+    if (!userId) return;
+
     const notificationId = Number(req.params.id);
 
     if (!Number.isInteger(notificationId) || notificationId <= 0) {
@@ -64,7 +98,8 @@ export const getNotificationById = async (req, res) => {
     }
 
     const [rows] = await pool.query(
-      `SELECT * FROM notifications
+      `SELECT *
+       FROM notifications
        WHERE notification_id = ? AND user_id = ?`,
       [notificationId, userId]
     );
@@ -76,13 +111,15 @@ export const getNotificationById = async (req, res) => {
       });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       data: rows[0]
     });
+
   } catch (error) {
     console.error("Get notification error:", error);
-    res.status(500).json({
+
+    return res.status(500).json({
       success: false,
       message: "Failed to retrieve notification."
     });
@@ -92,7 +129,9 @@ export const getNotificationById = async (req, res) => {
 // PATCH: Mark one notification as read
 export const markNotificationAsRead = async (req, res) => {
   try {
-    const userId = req.user.user_id;
+    const userId = validateUserId(req, res);
+    if (!userId) return;
+
     const notificationId = Number(req.params.id);
 
     if (!Number.isInteger(notificationId) || notificationId <= 0) {
@@ -111,7 +150,8 @@ export const markNotificationAsRead = async (req, res) => {
 
     if (result.affectedRows === 0) {
       const [rows] = await pool.query(
-        `SELECT notification_id FROM notifications
+        `SELECT notification_id
+         FROM notifications
          WHERE notification_id = ? AND user_id = ?`,
         [notificationId, userId]
       );
@@ -124,23 +164,26 @@ export const markNotificationAsRead = async (req, res) => {
       }
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Notification marked as read."
     });
+
   } catch (error) {
     console.error("Mark notification as read error:", error);
-    res.status(500).json({
+
+    return res.status(500).json({
       success: false,
       message: "Failed to update notification."
     });
   }
 };
 
-// PATCH: Mark all admin notifications as read
+// PATCH: Mark all notifications as read
 export const markAllNotificationsAsRead = async (req, res) => {
   try {
-    const userId = req.user.user_id;
+    const userId = validateUserId(req, res);
+    if (!userId) return;
 
     const [result] = await pool.query(
       `UPDATE notifications
@@ -149,24 +192,28 @@ export const markAllNotificationsAsRead = async (req, res) => {
       [userId]
     );
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "All notifications marked as read.",
       updatedCount: result.affectedRows
     });
+
   } catch (error) {
     console.error("Mark all notifications as read error:", error);
-    res.status(500).json({
+
+    return res.status(500).json({
       success: false,
       message: "Failed to update notifications."
     });
   }
 };
 
-// DELETE: Delete one admin notification
+// DELETE: Delete one notification
 export const deleteNotification = async (req, res) => {
   try {
-    const userId = req.user.user_id;
+    const userId = validateUserId(req, res);
+    if (!userId) return;
+
     const notificationId = Number(req.params.id);
 
     if (!Number.isInteger(notificationId) || notificationId <= 0) {
@@ -189,13 +236,15 @@ export const deleteNotification = async (req, res) => {
       });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Notification deleted successfully."
     });
+
   } catch (error) {
     console.error("Delete notification error:", error);
-    res.status(500).json({
+
+    return res.status(500).json({
       success: false,
       message: "Failed to delete notification."
     });

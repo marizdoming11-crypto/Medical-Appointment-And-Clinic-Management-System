@@ -179,8 +179,13 @@ function DashboardPage() {
   { label: "Appointments", icon: CalendarDays, active: false, path: "/appointments" },
   { label: "Doctors", icon: Stethoscope, active: false, path: "/doctors" },
   { label: "Medical Records", icon: ClipboardList, active: false, path: "/medical-records" },
-  { label: "Notifications", icon: Bell, active: false },
-  { label: "Settings", icon: Settings, active: false },
+  { 
+  label: "Notifications", 
+  icon: Bell, 
+  active: false, 
+  path: "/notifications" 
+},
+  { label: "Settings", icon: Settings, active: false, path: "/settings" },
 ];
 
 

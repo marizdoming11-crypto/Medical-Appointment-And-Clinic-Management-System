@@ -173,14 +173,16 @@ function DashboardPage() {
   };
 
  const navigation = [
+
   { label: "Dashboard", icon: LayoutDashboard, active: true },
   { label: "Patients", icon: Users, active: false, path: "/patients" },
-  { label: "Appointments", icon: CalendarDays, active: false },
+  { label: "Appointments", icon: CalendarDays, active: false, path: "/appointments" },
   { label: "Doctors", icon: Stethoscope, active: false, path: "/doctors" },
-  { label: "Medical Records", icon: ClipboardList, active: false },
+  { label: "Medical Records", icon: ClipboardList, active: false, path: "/medical-records" },
   { label: "Notifications", icon: Bell, active: false },
   { label: "Settings", icon: Settings, active: false },
 ];
+
 
   const stats = [
     {
@@ -252,7 +254,8 @@ function DashboardPage() {
                   item.active ? "active" : ""
                 }`}
                 type="button"
-              onClick={() => {
+              
+onClick={() => {
   if (item.path) {
     navigate(item.path);
   } else if (!item.active) {
@@ -261,6 +264,7 @@ function DashboardPage() {
 
   setSidebarOpen(false);
 }}
+
               >
                 <Icon size={19} />
                 <span>{item.label}</span>

@@ -538,16 +538,15 @@ function DoctorsPage() {
   // SIDEBAR NAVIGATION
   // ========================================
 
-  const navigation = [
-    { label: "Dashboard", icon: LayoutDashboard, path: "/dashboard" },
-    { label: "Patients", icon: Users, path: "/patients" },
-    { label: "Appointments", icon: CalendarDays },
-    { label: "Doctors", icon: Stethoscope, path: "/doctors" },
-    { label: "Medical Records", icon: ClipboardList },
-    { label: "Notifications", icon: Bell },
-    { label: "Settings", icon: Settings },
-  ];
-
+ const navigation = [
+  { label: "Dashboard", icon: LayoutDashboard, path: "/dashboard" },
+  { label: "Patients", icon: Users, path: "/patients" },
+  { label: "Appointments", icon: CalendarDays, path: "/appointments" },
+  { label: "Doctors", icon: Stethoscope, path: "/doctors" },
+  { label: "Medical Records", icon: ClipboardList },
+  { label: "Notifications", icon: Bell },
+  { label: "Settings", icon: Settings },
+];
   // ========================================
   // FORMAT DATE
   // ========================================
@@ -622,16 +621,14 @@ function DoctorsPage() {
                   item.label === "Doctors" ? "active" : ""
                 }`}
                 onClick={() => {
-                  if (item.path) {
-                    navigate(item.path);
-                  } else {
-                    alert(
-                      `${item.label} module will be implemented next.`
-                    );
-                  }
+  if (item.path) {
+    navigate(item.path);
+  } else {
+    alert(`${item.label} module will be implemented next.`);
+  }
 
-                  setSidebarOpen(false);
-                }}
+  setSidebarOpen(false);
+}}
               >
                 <Icon size={19} />
                 <span>{item.label}</span>

@@ -6,7 +6,8 @@ import dashboardRoutes from "./routes/dashboard.routes.js";
 import healthRoutes from "./routes/health.routes.js";
 import patientRoutes from "./routes/patient.routes.js";
 import doctorRoutes from "./routes/doctor.routes.js";
-
+import appointmentRoutes from "./routes/appointment.routes.js";
+import medicalRecordRoutes from "./routes/medicalRecord.routes.js";
 
 import authRoutes from "./routes/auth.routes.js";
 
@@ -45,7 +46,8 @@ app.use("/api/auth", authRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/patients", patientRoutes);
 app.use("/api/doctors", doctorRoutes);
-
+app.use("/api/appointments", appointmentRoutes);
+app.use("/api/medical-records", medicalRecordRoutes);
 
 
 app.use((req, res) => {

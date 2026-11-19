@@ -27,6 +27,14 @@ interface AdminProfile {
   account_status?: string;
 }
 
+interface ClinicSettings {
+  setting_id?: number;
+  clinic_name: string;
+  address: string;
+  contact_number: string;
+  email: string;
+}
+
 function SettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
   const [profile, setProfile] = useState<AdminProfile | null>(null);
@@ -43,6 +51,17 @@ function SettingsPage() {
 
   const [passwordMessage, setPasswordMessage] = useState("");
   const [passwordError, setPasswordError] = useState("");
+
+  const [clinic, setClinic] = useState<ClinicSettings>({
+    clinic_name: "",
+    address: "",
+    contact_number: "",
+    email: "",
+  });
+  const [loadingClinic, setLoadingClinic] = useState(false);
+  const [savingClinic, setSavingClinic] = useState(false);
+  const [clinicMessage, setClinicMessage] = useState("");
+  const [clinicError, setClinicError] = useState("");
 
   const token = sessionStorage.getItem("authToken");
 
@@ -144,6 +163,89 @@ function SettingsPage() {
       );
     } finally {
       setChangingPassword(false);
+    }
+  };
+
+
+  const fetchClinicSettings = async () => {
+    if (!token) {
+      setClinicError("Your login session has expired. Please log in again.");
+      return;
+    }
+
+    setLoadingClinic(true);
+    setClinicError("");
+    try {
+      const response = await fetch(`${API_URL}/clinic-settings`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || "Unable to load clinic information.");
+      }
+
+      if (result.data) {
+        setClinic({
+          setting_id: result.data.setting_id,
+          clinic_name: result.data.clinic_name || "",
+          address: result.data.address || "",
+          contact_number: result.data.contact_number || "",
+          email: result.data.email || "",
+        });
+      }
+    } catch (error) {
+      setClinicError(error instanceof Error ? error.message : "Unable to load clinic information.");
+    } finally {
+      setLoadingClinic(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "clinic") fetchClinicSettings();
+  }, [activeTab]);
+
+  const handleSaveClinic = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setClinicMessage("");
+    setClinicError("");
+
+    if (!clinic.clinic_name.trim()) {
+      setClinicError("Clinic name is required.");
+      return;
+    }
+    if (!token) {
+      setClinicError("Your login session has expired. Please log in again.");
+      return;
+    }
+
+    setSavingClinic(true);
+    try {
+      const response = await fetch(`${API_URL}/clinic-settings`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          clinic_name: clinic.clinic_name,
+          address: clinic.address,
+          contact_number: clinic.contact_number,
+          email: clinic.email,
+        }),
+      });
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || "Unable to save clinic information.");
+      }
+
+      setClinicMessage(result.message || "Clinic information saved successfully.");
+      await fetchClinicSettings();
+    } catch (error) {
+      setClinicError(error instanceof Error ? error.message : "Unable to save clinic information.");
+    } finally {
+      setSavingClinic(false);
     }
   };
 
@@ -389,17 +491,97 @@ function SettingsPage() {
                 </div>
               </div>
 
-              <div className="settings-coming-soon">
-                <Hospital size={34} />
-                <h3>Clinic Information Management</h3>
-                <p>
-                  This section is prepared for clinic name, address, contact
-                  number, and email settings. Saving these details requires
-                  a clinic settings database table and backend API, which
-                  have not been implemented yet.
-                </p>
-                <span>Backend integration pending</span>
-              </div>
+              {clinicMessage && (
+                <div className="settings-alert success">
+                  <CheckCircle2 size={19} />
+                  {clinicMessage}
+                </div>
+              )}
+
+              {clinicError && (
+                <div className="settings-alert error">
+                  <AlertCircle size={19} />
+                  {clinicError}
+                </div>
+              )}
+
+              {loadingClinic ? (
+                <div className="settings-loading">
+                  <LoaderCircle className="settings-spinner" size={22} />
+                  Loading clinic information...
+                </div>
+              ) : (
+                <form onSubmit={handleSaveClinic} className="clinic-form">
+                  <div className="clinic-form-grid">
+                    <div className="settings-field clinic-field-full">
+                      <label htmlFor="clinicName">Clinic Name *</label>
+                      <input
+                        id="clinicName"
+                        type="text"
+                        value={clinic.clinic_name}
+                        onChange={(e) => setClinic({ ...clinic, clinic_name: e.target.value })}
+                        placeholder="Enter clinic name"
+                        maxLength={150}
+                        required
+                      />
+                    </div>
+
+                    <div className="settings-field clinic-field-full">
+                      <label htmlFor="clinicAddress">Address</label>
+                      <textarea
+                        id="clinicAddress"
+                        value={clinic.address}
+                        onChange={(e) => setClinic({ ...clinic, address: e.target.value })}
+                        placeholder="Enter clinic address"
+                        rows={3}
+                      />
+                    </div>
+
+                    <div className="settings-field">
+                      <label htmlFor="clinicContact">Contact Number</label>
+                      <input
+                        id="clinicContact"
+                        type="tel"
+                        value={clinic.contact_number}
+                        onChange={(e) => setClinic({ ...clinic, contact_number: e.target.value })}
+                        placeholder="Enter contact number"
+                        maxLength={20}
+                      />
+                    </div>
+
+                    <div className="settings-field">
+                      <label htmlFor="clinicEmail">Email Address</label>
+                      <input
+                        id="clinicEmail"
+                        type="email"
+                        value={clinic.email}
+                        onChange={(e) => setClinic({ ...clinic, email: e.target.value })}
+                        placeholder="Enter clinic email"
+                        maxLength={150}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="clinic-form-note">
+                    <ShieldCheck size={18} />
+                    <span>Clinic information is shared across the MediCare system.</span>
+                  </div>
+
+                  <button type="submit" className="settings-primary-button" disabled={savingClinic}>
+                    {savingClinic ? (
+                      <>
+                        <LoaderCircle className="settings-spinner" size={18} />
+                        Saving Changes...
+                      </>
+                    ) : (
+                      <>
+                        <Save size={18} />
+                        Save Changes
+                      </>
+                    )}
+                  </button>
+                </form>
+              )}
             </section>
           )}
 

@@ -1,9 +1,9 @@
+
 import pool from "../config/db.js";
 
 // ========================================
 // DATE VALIDATION
 // ========================================
-
 
 const isValidDate = (date) => {
   if (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
@@ -11,7 +11,6 @@ const isValidDate = (date) => {
   }
 
   const [year, month, day] = date.split("-").map(Number);
-
   const parsedDate = new Date(Date.UTC(year, month - 1, day));
 
   return (
@@ -98,11 +97,13 @@ export const getAllAppointments = async (req, res) => {
           a.updated_at,
           CONCAT(p.first_name, ' ', p.last_name) AS patient_name,
           p.contact_number AS patient_contact,
+          u.email AS patient_email,
           CONCAT(d.first_name, ' ', d.last_name) AS doctor_name,
           d.specialization AS doctor_specialization,
           s.service_name
         FROM appointments a
         INNER JOIN patients p ON a.patient_id = p.patient_id
+        LEFT JOIN users u ON p.user_id = u.user_id
         INNER JOIN doctors d ON a.doctor_id = d.doctor_id
         INNER JOIN services s ON a.service_id = s.service_id
         ${whereClause}
@@ -119,6 +120,7 @@ export const getAllAppointments = async (req, res) => {
       total: appointments.length,
       appointments
     });
+
   } catch (error) {
     console.error("Get appointments error:", error);
 
@@ -192,6 +194,7 @@ export const getAppointmentById = async (req, res) => {
       success: true,
       appointment: appointments[0]
     });
+
   } catch (error) {
     console.error("Get appointment error:", error);
 
@@ -201,6 +204,7 @@ export const getAppointmentById = async (req, res) => {
     });
   }
 };
+
 // ========================================
 // UPDATE APPOINTMENT STATUS
 // APPROVE / REJECT / CANCEL / COMPLETE
@@ -221,10 +225,7 @@ export const updateAppointmentStatus = async (req, res) => {
     }
 
     const allowedStatuses = [
-      "Approved",
-      "Rejected",
-      "Cancelled",
-      "Completed"
+      "Approved", "Rejected", "Cancelled", "Completed"
     ];
 
     if (!allowedStatuses.includes(status)) {
@@ -252,11 +253,15 @@ export const updateAppointmentStatus = async (req, res) => {
       `
         SELECT
           appointment_id,
-          doctor_id,
-          schedule_id,
+  patient_id,
+  doctor_id,
+  schedule_id,
           DATE_FORMAT(appointment_date, '%Y-%m-%d') AS appointment_date,
           TIME_FORMAT(appointment_time, '%H:%i:%s') AS appointment_time,
-          status
+          status,
+          (SELECT p.user_id
+           FROM patients p
+           WHERE p.patient_id = appointments.patient_id) AS patient_user_id
         FROM appointments
         WHERE appointment_id = ?
         FOR UPDATE
@@ -312,48 +317,55 @@ export const updateAppointmentStatus = async (req, res) => {
         });
       }
 
-      if (appointment.schedule_id !== null) {
-        const [schedules] = await connection.execute(
-          `
-            SELECT
-              schedule_id,
-              doctor_id,
-              DATE_FORMAT(available_date, '%Y-%m-%d') AS available_date,
-              TIME_FORMAT(start_time, '%H:%i:%s') AS start_time,
-              TIME_FORMAT(end_time, '%H:%i:%s') AS end_time,
-              status
-            FROM schedules
-            WHERE schedule_id = ?
-            FOR UPDATE
-          `,
-          [appointment.schedule_id]
-        );
+      if (appointment.schedule_id === null) {
+        await connection.rollback();
 
-        if (!schedules.length) {
-          await connection.rollback();
+        return res.status(409).json({
+          success: false,
+          message: "This appointment has no assigned doctor schedule and cannot be approved."
+        });
+      }
 
-          return res.status(409).json({
-            success: false,
-            message: "The assigned doctor schedule no longer exists."
-          });
-        }
+      const [schedules] = await connection.execute(
+        `
+          SELECT
+            schedule_id,
+            doctor_id,
+            DATE_FORMAT(available_date, '%Y-%m-%d') AS available_date,
+            TIME_FORMAT(start_time, '%H:%i:%s') AS start_time,
+            TIME_FORMAT(end_time, '%H:%i:%s') AS end_time,
+            status
+          FROM schedules
+          WHERE schedule_id = ?
+          FOR UPDATE
+        `,
+        [appointment.schedule_id]
+      );
 
-        const schedule = schedules[0];
+      if (!schedules.length) {
+        await connection.rollback();
 
-        if (
-          Number(schedule.doctor_id) !== Number(appointment.doctor_id) ||
-          schedule.available_date !== appointment.appointment_date ||
-          schedule.status !== "Available" ||
-          appointment.appointment_time < schedule.start_time ||
-          appointment.appointment_time >= schedule.end_time
-        ) {
-          await connection.rollback();
+        return res.status(409).json({
+          success: false,
+          message: "The assigned doctor schedule no longer exists."
+        });
+      }
 
-          return res.status(409).json({
-            success: false,
-            message: "The appointment does not match an available doctor schedule."
-          });
-        }
+      const schedule = schedules[0];
+
+      if (
+        Number(schedule.doctor_id) !== Number(appointment.doctor_id) ||
+        schedule.available_date !== appointment.appointment_date ||
+        schedule.status !== "Available" ||
+        appointment.appointment_time < schedule.start_time ||
+        appointment.appointment_time >= schedule.end_time
+      ) {
+        await connection.rollback();
+
+        return res.status(409).json({
+          success: false,
+          message: "The appointment does not match an available doctor schedule."
+        });
       }
 
       const [conflicts] = await connection.execute(
@@ -398,6 +410,27 @@ export const updateAppointmentStatus = async (req, res) => {
         appointmentId
       ]
     );
+
+    // Notify the patient about the admin's status update.
+    if (appointment.patient_user_id) {
+      const notificationMessages = {
+        Approved: `Your appointment #${appointmentId} has been approved.`,
+        Rejected: `Your appointment #${appointmentId} has been rejected.${admin_remarks?.trim() ? ` Admin remarks: ${admin_remarks.trim()}` : ""}`,
+        Cancelled: `Your appointment #${appointmentId} has been cancelled.`,
+        Completed: `Your appointment #${appointmentId} has been marked as completed.`
+      };
+
+      await connection.execute(
+        `INSERT INTO notifications
+          (user_id, title, message, is_read, created_at)
+         VALUES (?, ?, ?, 0, NOW())`,
+        [
+          appointment.patient_user_id,
+          `Appointment ${status}`,
+          notificationMessages[status]
+        ]
+      );
+    }
 
     await connection.commit();
 
@@ -742,8 +775,8 @@ export const createAppointment = async (req, res) => {
     // FIND MATCHING DOCTOR SCHEDULE
     const [scheduleRows] = await connection.execute(
       `
-        SELECT schedule_id
-        FROM schedules
+        SELECT schedule_id, start_time, end_time, slot_duration
+FROM schedules
         WHERE doctor_id = ?
           AND available_date = ?
           AND status = 'Available'
@@ -751,13 +784,23 @@ export const createAppointment = async (req, res) => {
           AND end_time > ?
         ORDER BY start_time
         LIMIT 1
+        FOR UPDATE
       `,
       [doctorId, appointment_date, normalizedTime, normalizedTime]
     );
 
-    const scheduleId = scheduleRows.length
-      ? scheduleRows[0].schedule_id
-      : null;
+    // Reject appointment if no matching schedule exists.
+    // This prevents appointments during lunch breaks and unavailable hours.
+    if (scheduleRows.length === 0) {
+      await connection.rollback();
+
+      return res.status(409).json({
+        success: false,
+        message: "The selected doctor has no available schedule at this date and time. Please choose a time within the doctor's available hours."
+      });
+    }
+
+    const scheduleId = scheduleRows[0].schedule_id;
 
     // CREATE APPOINTMENT
     const [appointmentResult] = await connection.execute(

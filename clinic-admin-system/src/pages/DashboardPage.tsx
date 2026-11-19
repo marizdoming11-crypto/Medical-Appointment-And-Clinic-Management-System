@@ -171,22 +171,16 @@ function DashboardPage() {
     sessionStorage.removeItem("authUser");
     navigate("/login", { replace: true });
   };
-
- const navigation = [
-
-  { label: "Dashboard", icon: LayoutDashboard, active: true },
+const navigation = [
+  { label: "Dashboard", icon: LayoutDashboard, active: true, path: "/dashboard" },
   { label: "Patients", icon: Users, active: false, path: "/patients" },
   { label: "Appointments", icon: CalendarDays, active: false, path: "/appointments" },
   { label: "Doctors", icon: Stethoscope, active: false, path: "/doctors" },
   { label: "Medical Records", icon: ClipboardList, active: false, path: "/medical-records" },
-  { 
-  label: "Notifications", 
-  icon: Bell, 
-  active: false, 
-  path: "/notifications" 
-},
+  { label: "Notifications", icon: Bell, active: false, path: "/notifications" },
   { label: "Settings", icon: Settings, active: false, path: "/settings" },
 ];
+
 
 
   const stats = [
@@ -261,16 +255,9 @@ function DashboardPage() {
                 type="button"
               
 onClick={() => {
-  if (item.path) {
-    navigate(item.path);
-  } else if (!item.active) {
-    alert(`${item.label} module will be implemented next.`);
-  }
-
+  navigate(item.path);
   setSidebarOpen(false);
-}}
-
-              >
+}}          >
                 <Icon size={19} />
                 <span>{item.label}</span>
               </button>

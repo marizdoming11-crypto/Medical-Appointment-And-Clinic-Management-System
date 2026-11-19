@@ -9,6 +9,8 @@ import doctorRoutes from "./routes/doctor.routes.js";
 import appointmentRoutes from "./routes/appointment.routes.js";
 import medicalRecordRoutes from "./routes/medicalRecord.routes.js";
 import notificationRoutes from "./routes/notification.routes.js";
+import clinicSettingsRoutes from "./routes/clinicSettings.routes.js";
+import patientPortalRoutes from "./routes/patientPortal.routes.js";
 
 
 import authRoutes from "./routes/auth.routes.js";
@@ -51,6 +53,9 @@ app.use("/api/doctors", doctorRoutes);
 app.use("/api/appointments", appointmentRoutes);
 app.use("/api/medical-records", medicalRecordRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/clinic-settings", clinicSettingsRoutes);
+app.use("/api/patient-portal", patientPortalRoutes);
+app.use("/api/patient-portal", patientPortalRoutes);
 
 app.use((req, res) => {
   res.status(404).json({

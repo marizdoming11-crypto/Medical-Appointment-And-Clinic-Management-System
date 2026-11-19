@@ -1,19 +1,33 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import {
-  Activity, CalendarDays, Clock, Heart, HeartPulse,
-  Menu, ShieldCheck, Stethoscope, Syringe, Users,
-  UserRound, ArrowRight, MapPin, Phone, Mail,
-  LogOut, ClipboardList, X, CheckCircle2
+  CalendarDays,
+  Heart,
+  HeartPulse,
+  Menu,
+  Stethoscope,
+  Syringe,
+  UserRound,
+  ArrowRight,
+  MapPin,
+  Phone,
+  Mail,
+  LogOut,
+  ClipboardList,
+  X,
+  CheckCircle2,
+  Activity,
+  Clock
 } from "lucide-react";
-import "./App.css";
 
-type User = {
-  id: string;
-  name: string;
-  email: string;
-  password: string;
-};
+import "./App.css";
+import PatientDashboard, { type PatientUser } from "./components/PatientDashboard";
+
+// ==============================
+// TYPES
+// ==============================
+
+type User = PatientUser;
 
 type Appointment = {
   id: string;
@@ -24,236 +38,999 @@ type Appointment = {
   time: string;
   reason: string;
   status: string;
+  service?: string;
 };
 
-const doctors = [
-  {
-    name: "Dr. Maria Santos",
-    specialty: "General Physician",
-    description: "General consultations and primary healthcare.",
-    initials: "MS",
-  },
-  {
-    name: "Dr. John Reyes",
-    specialty: "Pediatrician",
-    description: "Healthcare and wellness for children.",
-    initials: "JR",
-  },
-  {
-    name: "Dr. Angela Cruz",
-    specialty: "Family Medicine",
-    description: "Preventive care for the whole family.",
-    initials: "AC",
-  },
-];
+type Doctor = {
+  doctor_id: number;
+  first_name: string;
+  last_name: string;
+  specialization: string;
+  status: string;
+};
+
+type Service = {
+  service_id: number;
+  service_name: string;
+  description: string | null;
+};
+
+type Schedule = {
+  schedule_id: number;
+  doctor_id: number;
+  available_date: string;
+  start_time: string;
+  end_time: string;
+  slot_duration: number;
+};
+
+type PatientPortalOptionsResponse = {
+  success: boolean;
+  message?: string;
+  doctors: Omit<Doctor, "status">[];
+  services: Service[];
+  schedules: Schedule[];
+};
+
+type PatientAppointmentsResponse = {
+  success: boolean;
+  message?: string;
+  appointments: Array<{
+    appointment_id: number;
+    appointment_date: string;
+    appointment_time: string;
+    reason: string;
+    status: string;
+    doctor_first_name: string;
+    doctor_last_name: string;
+    service_name: string;
+  }>;
+};
+
+type MedicalRecord = {
+  record_id: number;
+  diagnosis: string;
+  prescription: string | null;
+  treatment: string | null;
+  remarks: string | null;
+  consultation_date: string;
+  created_at?: string;
+  doctor_name: string;
+  specialization: string;
+  service_name: string | null;
+};
+
+type PatientMedicalRecordsResponse = {
+  success: boolean;
+  message?: string;
+  records: MedicalRecord[];
+};
+
+type DoctorsResponse = {
+  success: boolean;
+  total?: number;
+  doctors: Doctor[];
+};
+
+type ClinicSettings = {
+  clinic_name: string;
+  address: string;
+  contact_number: string;
+  email: string;
+};
+
+type ApiResponse = {
+  success: boolean;
+  message?: string;
+  token?: string;
+  user?: User;
+  data?: any;
+};
+
+// ==============================
+// CONFIGURATION
+// ==============================
+
+const API_URL =
+  import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+
+const defaultClinic: ClinicSettings = {
+  clinic_name: "MediCare Clinic",
+  address: "",
+  contact_number: "",
+  email: ""
+};
 
 const services = [
   {
     icon: Stethoscope,
     title: "General Consultation",
-    description: "Professional medical advice and assessment.",
+    description: "Professional medical advice and assessment."
   },
   {
     icon: Syringe,
     title: "Vaccination",
-    description: "Protect yourself with recommended vaccines.",
+    description: "Protect yourself with recommended vaccines."
   },
   {
     icon: HeartPulse,
     title: "Preventive Care",
-    description: "Stay healthy through regular health monitoring.",
+    description: "Stay healthy through regular health monitoring."
   },
   {
     icon: Activity,
     title: "Health Check-ups",
-    description: "Routine examinations and health assessments.",
-  },
+    description: "Routine examinations and health assessments."
+  }
 ];
 
-function readStorage<T>(key: string, fallback: T): T {
-  try {
-    const saved = localStorage.getItem(key);
-    return saved ? JSON.parse(saved) as T : fallback;
-  } catch {
-    return fallback;
+// ==============================
+// HELPER FUNCTIONS
+// ==============================
+
+function getPatientName(user: User | null): string {
+  if (!user) return "";
+
+  if (!user.patient) {
+    return user.email;
   }
+
+  return `${user.patient.first_name} ${user.patient.last_name}`;
 }
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error
+    ? error.message
+    : "Something went wrong. Please try again.";
+}
+
+// ==============================
+// MAIN COMPONENT
+// ==============================
+
 function App() {
-  const [users, setUsers] = useState<User[]>(() =>
-    readStorage("clinic_users", [])
+  // AUTHENTICATION
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    try {
+      const savedUser = sessionStorage.getItem("authUser");
+      return savedUser ? JSON.parse(savedUser) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const [authToken, setAuthToken] = useState<string | null>(() =>
+    sessionStorage.getItem("authToken")
   );
 
-  const [appointments, setAppointments] = useState<Appointment[]>(() =>
-    readStorage("clinic_appointments", [])
-  );
+  const [authLoading, setAuthLoading] = useState(true);
 
-  const [currentUser, setCurrentUser] = useState<User | null>(() =>
-    readStorage("clinic_current_user", null)
-  );
+  // PATIENT PORTAL DATA
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [bookingServices, setBookingServices] = useState<Service[]>([]);
+  const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [medicalRecords, setMedicalRecords] = useState<MedicalRecord[]>([]);
+  const [medicalRecordsLoading, setMedicalRecordsLoading] = useState(false);
+  const [medicalRecordsError, setMedicalRecordsError] = useState("");
+  const [bookingOptionsLoading, setBookingOptionsLoading] = useState(false);
+  const [appointmentsLoading, setAppointmentsLoading] = useState(false);
+  const [portalError, setPortalError] = useState("");
 
-  const [authMode, setAuthMode] = useState<"login" | "register" | null>(null);
+  // DOCTORS
+  const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [doctorsLoading, setDoctorsLoading] = useState(true);
+  const [doctorError, setDoctorError] = useState("");
+
+  // CLINIC SETTINGS
+  const [clinic, setClinic] =
+    useState<ClinicSettings>(defaultClinic);
+
+  const [clinicLoading, setClinicLoading] = useState(true);
+  const [clinicError, setClinicError] = useState("");
+
+  // MODALS AND UI
+  const [authMode, setAuthMode] =
+    useState<"login" | "register" | null>(null);
+
   const [showBooking, setShowBooking] = useState(false);
   const [showAppointments, setShowAppointments] = useState(false);
   const [message, setMessage] = useState("");
   const [mobileMenu, setMobileMenu] = useState(false);
 
-  useEffect(() => {
-    localStorage.setItem("clinic_users", JSON.stringify(users));
-  }, [users]);
+  // ==============================
+  // CHECK CURRENT USER SESSION
+  // ==============================
 
   useEffect(() => {
-    localStorage.setItem("clinic_appointments", JSON.stringify(appointments));
-  }, [appointments]);
+    async function verifySession() {
+      const token = sessionStorage.getItem("authToken");
+
+      if (!token) {
+        setAuthLoading(false);
+        return;
+      }
+
+      try {
+        const response = await fetch(`${API_URL}/auth/me`, {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+
+        const data: ApiResponse = await response.json();
+
+        if (!response.ok || !data.success || !data.user) {
+          throw new Error("Your session has expired.");
+        }
+
+        if (data.user.role !== "patient") {
+          throw new Error("This account is not a patient account.");
+        }
+
+        setCurrentUser(data.user);
+        setAuthToken(token);
+
+        sessionStorage.setItem(
+          "authUser",
+          JSON.stringify(data.user)
+        );
+      } catch (error) {
+        console.error("Session verification error:", error);
+
+        sessionStorage.removeItem("authToken");
+        sessionStorage.removeItem("authUser");
+
+        setCurrentUser(null);
+        setAuthToken(null);
+      } finally {
+        setAuthLoading(false);
+      }
+    }
+
+    verifySession();
+  }, []);
+
+  // ==============================
+  // FETCH DOCTORS FROM DATABASE
+  // ==============================
 
   useEffect(() => {
-    localStorage.setItem("clinic_current_user", JSON.stringify(currentUser));
-  }, [currentUser]);
+    async function fetchDoctors() {
+      try {
+        setDoctorsLoading(true);
+        setDoctorError("");
 
-  function handleRegister(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
+        const response = await fetch(`${API_URL}/doctors`);
 
-    const name = String(form.get("name")).trim();
-    const email = String(form.get("email")).trim().toLowerCase();
-    const password = String(form.get("password"));
+        const data: DoctorsResponse = await response.json();
 
-    if (users.some(user => user.email === email)) {
-      setMessage("This email is already registered. Please log in.");
+        if (!response.ok || !data.success) {
+          throw new Error("Unable to retrieve doctors.");
+        }
+
+        setDoctors(
+          (data.doctors || []).filter(
+            doctor =>
+              doctor.status?.toLowerCase() === "available"
+          )
+        );
+      } catch (error) {
+        console.error("Doctor loading error:", error);
+
+        setDoctorError(getErrorMessage(error));
+      } finally {
+        setDoctorsLoading(false);
+      }
+    }
+
+    fetchDoctors();
+  }, []);
+
+  // ==============================
+  // FETCH PATIENT PORTAL DATA
+  // ==============================
+
+  useEffect(() => {
+    if (!authToken || !currentUser) {
+      setAppointments([]);
+      setBookingServices([]);
+      setSchedules([]);
+      setMedicalRecords([]);
+      setMedicalRecordsError("");
+      setPortalError("");
       return;
     }
 
-    const newUser: User = {
-      id: crypto.randomUUID(),
-      name,
-      email,
-      password,
-    };
+    let cancelled = false;
 
-    setUsers(previous => [...previous, newUser]);
-    setCurrentUser(newUser);
-    setAuthMode(null);
-    setMessage("Your account has been created successfully!");
+    async function fetchPatientPortalData() {
+      setBookingOptionsLoading(true);
+      setAppointmentsLoading(true);
+      setPortalError("");
+
+      try {
+        const headers = {
+          Authorization: `Bearer ${authToken}`
+        };
+
+        const [optionsResponse, appointmentsResponse, recordsResponse] = await Promise.all([
+          fetch(`${API_URL}/patient-portal/booking-options`, { headers }),
+          fetch(`${API_URL}/patient-portal/appointments`, { headers }),
+          fetch(`${API_URL}/patient-portal/medical-records`, { headers })
+        ]);
+
+        const optionsData: PatientPortalOptionsResponse =
+          await optionsResponse.json();
+        const appointmentsData: PatientAppointmentsResponse =
+          await appointmentsResponse.json();
+        const recordsData: PatientMedicalRecordsResponse =
+          await recordsResponse.json();
+
+        if (!optionsResponse.ok || !optionsData.success) {
+          throw new Error(
+            optionsData.message || "Unable to load appointment options."
+          );
+        }
+
+        if (!appointmentsResponse.ok || !appointmentsData.success) {
+          throw new Error(
+            appointmentsData.message || "Unable to load your appointments."
+          );
+        }
+
+        if (!recordsResponse.ok || !recordsData.success) {
+          throw new Error(
+            recordsData.message || "Unable to load your medical records."
+          );
+        }
+
+        if (cancelled) return;
+
+        setDoctors(
+          (optionsData.doctors || []).map(doctor => ({
+            ...doctor,
+            status: "Available"
+          }))
+        );
+        setBookingServices(optionsData.services || []);
+        setSchedules(optionsData.schedules || []);
+        setMedicalRecords(recordsData.records || []);
+        setMedicalRecordsError("");
+
+        setAppointments(
+          (appointmentsData.appointments || []).map(item => ({
+            id: String(item.appointment_id),
+            patientName: getPatientName(currentUser!),
+            patientEmail: currentUser!.email,
+            doctor: `Dr. ${item.doctor_first_name} ${item.doctor_last_name}`,
+            date: item.appointment_date,
+            time: item.appointment_time.slice(0, 5),
+            reason: item.reason,
+            status: item.status,
+            service: item.service_name
+          }))
+        );
+      } catch (error) {
+        if (!cancelled) {
+          console.error("Patient portal loading error:", error);
+          setPortalError(getErrorMessage(error));
+        }
+      } finally {
+        if (!cancelled) {
+          setBookingOptionsLoading(false);
+          setAppointmentsLoading(false);
+        }
+      }
+    }
+
+    fetchPatientPortalData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authToken, currentUser]);
+
+  // ==============================
+  // REFRESH PATIENT MEDICAL RECORDS
+  // ==============================
+
+  async function handleRefreshMedicalRecords() {
+    if (!authToken) return;
+
+    try {
+      setMedicalRecordsLoading(true);
+      setMedicalRecordsError("");
+
+      const response = await fetch(`${API_URL}/patient-portal/medical-records`, {
+        headers: { Authorization: `Bearer ${authToken}` }
+      });
+      const data: PatientMedicalRecordsResponse = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "Unable to load medical records.");
+      }
+
+      setMedicalRecords(data.records || []);
+    } catch (error) {
+      console.error("Medical records loading error:", error);
+      setMedicalRecordsError(getErrorMessage(error));
+    } finally {
+      setMedicalRecordsLoading(false);
+    }
   }
 
-  function handleLogin(event: FormEvent<HTMLFormElement>) {
+  // ==============================
+  // FETCH CLINIC INFORMATION
+  // ==============================
+
+  useEffect(() => {
+    async function fetchClinicSettings() {
+      try {
+        setClinicLoading(true);
+        setClinicError("");
+
+        const response = await fetch(
+          `${API_URL}/clinic-settings`
+        );
+
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          throw new Error(
+            data.message ||
+              "Unable to retrieve clinic information."
+          );
+        }
+
+        const settings =
+          data.data ||
+          data.settings ||
+          data.clinicSettings ||
+          data.clinic ||
+          data;
+
+        setClinic({
+          clinic_name:
+            settings.clinic_name || "MediCare Clinic",
+          address: settings.address || "",
+          contact_number: settings.contact_number || "",
+          email: settings.email || ""
+        });
+      } catch (error) {
+        console.error("Clinic settings loading error:", error);
+
+        setClinicError(getErrorMessage(error));
+      } finally {
+        setClinicLoading(false);
+      }
+    }
+
+    fetchClinicSettings();
+  }, []);
+
+  // ==============================
+  // REGISTER PATIENT
+  // ==============================
+
+  async function handleRegister(
+    event: FormEvent<HTMLFormElement>
+  ) {
     event.preventDefault();
+
     const form = new FormData(event.currentTarget);
 
-    const email = String(form.get("email")).trim().toLowerCase();
+    const first_name = String(form.get("first_name")).trim();
+    const middle_name =
+      String(form.get("middle_name")).trim();
+    const last_name = String(form.get("last_name")).trim();
+    const birth_date = String(form.get("birth_date"));
+    const sex = String(form.get("sex"));
+    const contact_number =
+      String(form.get("contact_number")).trim();
+    const address = String(form.get("address")).trim();
+    const email = String(form.get("email"))
+      .trim()
+      .toLowerCase();
     const password = String(form.get("password"));
-
-    const foundUser = users.find(
-      user => user.email === email && user.password === password
+    const confirmPassword = String(
+      form.get("confirm_password")
     );
 
-    if (!foundUser) {
-      setMessage("Incorrect email or password.");
+    if (
+      !first_name ||
+      !last_name ||
+      !email ||
+      !password ||
+      !sex
+    ) {
+      setMessage("Please complete all required fields.");
       return;
     }
 
-    setCurrentUser(foundUser);
-    setAuthMode(null);
-    setMessage("Welcome back, " + foundUser.name + "!");
+    if (password.length < 8) {
+      setMessage(
+        "Password must contain at least 8 characters."
+      );
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setMessage("Passwords do not match.");
+      return;
+    }
+
+    if (
+      contact_number &&
+      !/^09\d{9}$/.test(contact_number)
+    ) {
+      setMessage(
+        "Please enter a valid 11-digit Philippine mobile number."
+      );
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/auth/register`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          first_name,
+          middle_name: middle_name || null,
+          last_name,
+          birth_date: birth_date || null,
+          sex,
+          contact_number,
+          address,
+          email,
+          password
+        })
+      });
+
+      const data: ApiResponse = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data.message || "Unable to register your account."
+        );
+      }
+
+      setAuthMode("login");
+      setMessage(
+        data.message ||
+          "Registration successful! Please log in to continue."
+      );
+    } catch (error) {
+      console.error("Registration error:", error);
+      setMessage(getErrorMessage(error));
+    }
   }
+
+  // ==============================
+  // LOGIN PATIENT
+  // ==============================
+
+  async function handleLogin(
+    event: FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
+
+    const form = new FormData(event.currentTarget);
+
+    const email = String(form.get("email"))
+      .trim()
+      .toLowerCase();
+
+    const password = String(form.get("password"));
+
+    try {
+      const response = await fetch(`${API_URL}/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          email,
+          password
+        })
+      });
+
+      const data: ApiResponse = await response.json();
+
+      if (!response.ok || !data.success || !data.token) {
+        throw new Error(
+          data.message || "Incorrect email or password."
+        );
+      }
+
+      if (data.user?.role && data.user.role !== "patient") {
+        throw new Error(
+          "Please use a patient account to access this website."
+        );
+      }
+
+      // GET COMPLETE PATIENT PROFILE
+      const profileResponse = await fetch(
+        `${API_URL}/auth/me`,
+        {
+          headers: {
+            Authorization: `Bearer ${data.token}`
+          }
+        }
+      );
+
+      const profileData: ApiResponse =
+        await profileResponse.json();
+
+      if (
+        !profileResponse.ok ||
+        !profileData.success ||
+        !profileData.user
+      ) {
+        throw new Error(
+          profileData.message ||
+            "Unable to retrieve your patient profile."
+        );
+      }
+
+      if (profileData.user.role !== "patient") {
+        throw new Error(
+          "This account is not a patient account."
+        );
+      }
+
+      // SAVE AUTHENTICATION SESSION
+      sessionStorage.setItem("authToken", data.token);
+
+      sessionStorage.setItem(
+        "authUser",
+        JSON.stringify(profileData.user)
+      );
+
+      setAuthToken(data.token);
+      setCurrentUser(profileData.user);
+
+      setAuthMode(null);
+
+      setMessage(
+        `Welcome back, ${getPatientName(profileData.user)}!`
+      );
+    } catch (error) {
+      console.error("Login error:", error);
+      setMessage(getErrorMessage(error));
+    }
+  }
+
+  // ==============================
+  // LOGOUT
+  // ==============================
 
   function handleLogout() {
+    sessionStorage.removeItem("authToken");
+    sessionStorage.removeItem("authUser");
+
+    setAuthToken(null);
     setCurrentUser(null);
+    setAppointments([]);
+    setBookingServices([]);
+    setSchedules([]);
+
     setShowAppointments(false);
-    setMessage("You have logged out.");
+    setShowBooking(false);
+
+    setMessage("You have logged out successfully.");
   }
 
+  // ==============================
+  // OPEN BOOKING
+  // ==============================
+
   function openBooking() {
+    if (authLoading) {
+      setMessage("Please wait while we verify your account.");
+      return;
+    }
+
     if (!currentUser) {
-      setMessage("Please log in or register before booking an appointment.");
+      setMessage(
+        "Please log in or register before booking an appointment."
+      );
+
       setAuthMode("login");
+      return;
+    }
+
+    if (!currentUser.patient) {
+      setMessage(
+        "Your patient profile could not be found. Please contact the clinic."
+      );
+      return;
+    }
+
+    if (doctors.length === 0) {
+      setMessage(
+        "There are currently no available doctors."
+      );
       return;
     }
 
     setShowBooking(true);
   }
 
-  function handleBooking(event: FormEvent<HTMLFormElement>) {
+  // ==============================
+  // SUBMIT APPOINTMENT TO DATABASE
+  // ==============================
+
+  async function handleBooking(
+    event: FormEvent<HTMLFormElement>
+  ): Promise<boolean> {
     event.preventDefault();
 
-    if (!currentUser) return;
+    if (!currentUser || !authToken) {
+      setMessage("Please log in using a valid patient account.");
+      return false;
+    }
 
     const form = new FormData(event.currentTarget);
+    const doctorId = Number(form.get("doctor"));
+    const serviceId = Number(form.get("service"));
+    const appointmentDate = String(form.get("date") || "");
+    const selectedSlot = String(form.get("slot") || "");
+    const reason = String(form.get("reason") || "").trim();
 
-    const newAppointment: Appointment = {
-      id: crypto.randomUUID(),
-      patientName: currentUser.name,
-      patientEmail: currentUser.email,
-      doctor: String(form.get("doctor")),
-      date: String(form.get("date")),
-      time: String(form.get("time")),
-      reason: String(form.get("reason")),
-      status: "Pending",
-    };
+    const [scheduleIdText, appointmentTime] = selectedSlot.split("|");
+    const scheduleId = Number(scheduleIdText);
 
-    setAppointments(previous => [...previous, newAppointment]);
-    setShowBooking(false);
-    setMessage("Appointment request submitted! Please wait for receptionist approval.");
+    if (
+      !doctorId ||
+      !serviceId ||
+      !scheduleId ||
+      !appointmentDate ||
+      !appointmentTime ||
+      !reason
+    ) {
+      setMessage("Please complete all appointment details.");
+      return false;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/patient-portal/appointments`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`
+        },
+        body: JSON.stringify({
+          doctor_id: doctorId,
+          service_id: serviceId,
+          schedule_id: scheduleId,
+          appointment_date: appointmentDate,
+          appointment_time: appointmentTime,
+          reason
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "Unable to submit appointment.");
+      }
+
+      await refreshMyAppointments();
+      setMessage(data.message || "Appointment request submitted successfully.");
+      return true;
+    } catch (error) {
+      console.error("Appointment submission error:", error);
+      setMessage(getErrorMessage(error));
+      return false;
+    }
   }
 
-  const myAppointments = appointments.filter(
-    appointment => appointment.patientEmail === currentUser?.email
-  );
+  async function refreshMyAppointments() {
+    if (!authToken || !currentUser) return;
+
+    setAppointmentsLoading(true);
+
+    try {
+      const response = await fetch(`${API_URL}/patient-portal/appointments`, {
+        headers: {
+          Authorization: `Bearer ${authToken}`
+        }
+      });
+
+      const data: PatientAppointmentsResponse = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "Unable to refresh appointments.");
+      }
+
+      setAppointments(
+        (data.appointments || []).map(item => ({
+          id: String(item.appointment_id),
+          patientName: getPatientName(currentUser!),
+          patientEmail: currentUser!.email,
+          doctor: `Dr. ${item.doctor_first_name} ${item.doctor_last_name}`,
+          date: item.appointment_date,
+          time: item.appointment_time.slice(0, 5),
+          reason: item.reason,
+          status: item.status,
+          service: item.service_name
+        }))
+      );
+    } catch (error) {
+      console.error("Refresh appointments error:", error);
+      setMessage(getErrorMessage(error));
+    } finally {
+      setAppointmentsLoading(false);
+    }
+  }
+
+  async function handleCancelAppointment(appointmentId: string) {
+    if (!authToken) return;
+
+    try {
+      const response = await fetch(
+        `${API_URL}/patient-portal/appointments/${appointmentId}/cancel`,
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${authToken}`
+          }
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "Unable to cancel appointment.");
+      }
+
+      setMessage(data.message || "Appointment cancelled successfully.");
+      await refreshMyAppointments();
+    } catch (error) {
+      console.error("Cancel appointment error:", error);
+      setMessage(getErrorMessage(error));
+    }
+  }
+
+  // ==============================
+  // PATIENT APPOINTMENTS
+  // ==============================
+
+  const myAppointments = appointments;
 
   const today = new Date().toLocaleDateString("en-CA");
 
+  // ==============================
+  // RENDER
+  // ==============================
+
+  // Wait until the saved login session has been verified.
+  if (authLoading) {
+    return (
+      <div className="auth-loading">
+        <h2>MediCare Clinic</h2>
+        <p>Verifying your account...</p>
+      </div>
+    );
+  }
+
+  // Show the separate patient dashboard after successful login.
+  if (currentUser && authToken) {
+    return (
+      <PatientDashboard
+        user={currentUser}
+        token={authToken}
+        doctors={doctors}
+        doctorsLoading={doctorsLoading}
+        services={bookingServices}
+        schedules={schedules}
+        bookingOptionsLoading={bookingOptionsLoading}
+        appointments={myAppointments}
+        appointmentsLoading={appointmentsLoading}
+        portalError={portalError}
+        medicalRecords={medicalRecords}
+        medicalRecordsLoading={medicalRecordsLoading}
+        medicalRecordsError={medicalRecordsError}
+        onRefreshMedicalRecords={handleRefreshMedicalRecords}
+        onLogout={handleLogout}
+        onSubmitBooking={handleBooking}
+        onCancelAppointment={handleCancelAppointment}
+      />
+    );
+  }
+
+  // Show the public landing page when the patient is logged out.
   return (
     <div className="app">
+
       {/* NAVIGATION */}
       <header className="navbar">
         <a href="#home" className="brand">
-          <span className="brand-icon"><HeartPulse size={29} /></span>
+          <span className="brand-icon">
+            <HeartPulse size={29} />
+          </span>
+
           <span>
             <strong>MediCare</strong>
             <small>Family Clinic</small>
           </span>
         </a>
 
-        <button className="menu-toggle" onClick={() => setMobileMenu(!mobileMenu)}>
+        <button
+          className="menu-toggle"
+          onClick={() => setMobileMenu(!mobileMenu)}
+          type="button"
+        >
           <Menu />
         </button>
 
         <nav className={mobileMenu ? "nav-links open" : "nav-links"}>
-          <a href="#home" onClick={() => setMobileMenu(false)}>Home</a>
-          <a href="#about" onClick={() => setMobileMenu(false)}>About</a>
-          <a href="#services" onClick={() => setMobileMenu(false)}>Services</a>
-          <a href="#doctors" onClick={() => setMobileMenu(false)}>Our Doctors</a>
-          <a href="#contact" onClick={() => setMobileMenu(false)}>Contact</a>
+          <a href="#home" onClick={() => setMobileMenu(false)}>
+            Home
+          </a>
+
+          <a href="#services" onClick={() => setMobileMenu(false)}>
+            Services
+          </a>
+
+          <a href="#doctors" onClick={() => setMobileMenu(false)}>
+            Our Doctors
+          </a>
+
+          <a href="#contact" onClick={() => setMobileMenu(false)}>
+            Contact
+          </a>
         </nav>
 
         <div className="nav-actions">
           {currentUser ? (
             <>
-              <button className="text-button" onClick={() => setShowAppointments(true)}>
+              <button
+                className="text-button"
+                onClick={() => setShowAppointments(true)}
+                type="button"
+              >
                 My Appointments
               </button>
-              <button className="login-button" onClick={handleLogout}>
-                <LogOut size={16} /> Logout
+
+              <button
+                className="login-button"
+                onClick={handleLogout}
+                type="button"
+              >
+                <LogOut size={16} />
+                Logout
               </button>
             </>
           ) : (
-            <button className="login-button" onClick={() => setAuthMode("login")}>
-              <UserRound size={17} /> Login / Register
+            <button
+              className="login-button"
+              onClick={() => setAuthMode("login")}
+              type="button"
+              disabled={authLoading}
+            >
+              <UserRound size={17} />
+              Login / Register
             </button>
           )}
         </div>
       </header>
 
-      {/* HERO */}
       <main>
+
+        {/* HERO */}
         <section className="hero" id="home">
           <div className="hero-content">
             <span className="eyebrow">
-              <Heart size={16} fill="currentColor" /> YOUR HEALTH, OUR PRIORITY
+              <Heart size={16} fill="currentColor" />
+              YOUR HEALTH, OUR PRIORITY
             </span>
 
             <h1>
-              Quality Healthcare<br />
+              Quality Healthcare
+              <br />
               <span>for a Healthier You</span>
             </h1>
 
@@ -263,28 +1040,40 @@ function App() {
             </p>
 
             <div className="hero-actions">
-              <button className="primary-button" onClick={openBooking}>
-                <CalendarDays size={19} /> Book an Appointment <ArrowRight size={17} />
+              <button
+                className="primary-button"
+                onClick={openBooking}
+                type="button"
+              >
+                <CalendarDays size={19} />
+                Book an Appointment
+                <ArrowRight size={17} />
               </button>
-              <a href="#about" className="secondary-button">Learn More</a>
             </div>
 
             <div className="hero-note">
-              <ShieldCheck size={18} />
-              <span>Trusted care for you and your family</span>
+              <HeartPulse size={18} />
+              <span>
+                Trusted care for you and your family
+              </span>
             </div>
           </div>
 
           <div className="hero-visual">
             <div className="image-decoration"></div>
+
             <div className="clinic-image">
               <img
                 src="https://images.unsplash.com/photo-1622902046580-2b47f47f5471?auto=format&fit=crop&w=1000&q=85"
-                alt="Modern healthcare professional"
+                alt="Healthcare professional"
               />
             </div>
+
             <div className="floating-card">
-              <span className="floating-icon"><CalendarDays /></span>
+              <span className="floating-icon">
+                <CalendarDays />
+              </span>
+
               <span>
                 <strong>Easy Appointment</strong>
                 <small>Book your visit online</small>
@@ -293,40 +1082,31 @@ function App() {
           </div>
         </section>
 
-        {/* TRUST FEATURES */}
-        <section className="trust-section">
-          <div className="trust-item">
-            <ShieldCheck />
-            <span><strong>Trusted Care</strong><small>Professional Healthcare</small></span>
-          </div>
-          <div className="trust-item">
-            <Clock />
-            <span><strong>Easy Booking</strong><small>Online & Walk-in</small></span>
-          </div>
-          <div className="trust-item">
-            <Users />
-            <span><strong>Patient Focused</strong><small>Care for Every Family</small></span>
-          </div>
-          <div className="trust-item">
-            <HeartPulse />
-            <span><strong>Quality Service</strong><small>Your Health Matters</small></span>
-          </div>
-        </section>
-
-        {/* SERVICES */}
+        {/* MEDICAL SERVICES */}
         <section className="section" id="services">
           <div className="section-heading">
             <span>WHAT WE OFFER</span>
+
             <h2>Our Medical Services</h2>
-            <p>Healthcare services designed to support your well-being.</p>
+
+            <p>
+              Healthcare services designed to support your well-being.
+            </p>
           </div>
 
           <div className="service-grid">
             {services.map(service => {
               const Icon = service.icon;
+
               return (
-                <article className="service-card" key={service.title}>
-                  <div className="service-icon"><Icon size={30} /></div>
+                <article
+                  className="service-card"
+                  key={service.title}
+                >
+                  <div className="service-icon">
+                    <Icon size={30} />
+                  </div>
+
                   <h3>{service.title}</h3>
                   <p>{service.description}</p>
                 </article>
@@ -335,131 +1115,353 @@ function App() {
           </div>
         </section>
 
-        {/* ABOUT */}
-        <section className="about-section" id="about">
-          <div className="about-visual">
-            <img
-              src="https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?auto=format&fit=crop&w=1000&q=85"
-              alt="Modern clinic interior"
-            />
-          </div>
-          <div className="about-content">
-            <span className="eyebrow">ABOUT OUR CLINIC</span>
-            <h2>Care that puts you and your family first.</h2>
-            <p>
-              MediCare Family Clinic is dedicated to providing accessible,
-              compassionate, and quality healthcare for individuals and families.
-            </p>
-            <ul>
-              <li><CheckCircle2 /> Patient-centered healthcare</li>
-              <li><CheckCircle2 /> Friendly medical professionals</li>
-              <li><CheckCircle2 /> Convenient appointment requests</li>
-            </ul>
-            <a href="#contact" className="secondary-button">Contact Us</a>
-          </div>
-        </section>
-
         {/* DOCTORS */}
-        <section className="section doctors-section" id="doctors">
+        <section
+          className="section doctors-section"
+          id="doctors"
+        >
           <div className="section-heading">
             <span>MEET OUR TEAM</span>
+
             <h2>Our Doctors</h2>
-            <p>Meet the healthcare professionals who care for your family.</p>
+
+            <p>
+              Meet the healthcare professionals who care for your family.
+            </p>
           </div>
 
-          <div className="doctor-grid">
-            {doctors.map(doctor => (
-              <article className="doctor-card" key={doctor.name}>
-                <div className="doctor-avatar">{doctor.initials}</div>
-                <h3>{doctor.name}</h3>
-                <span>{doctor.specialty}</span>
-                <p>{doctor.description}</p>
-                <button className="doctor-button" onClick={openBooking}>
-                  Book Appointment <ArrowRight size={15} />
-                </button>
-              </article>
-            ))}
-          </div>
+          {doctorsLoading ? (
+            <div className="empty-state">
+              <p>Loading doctors...</p>
+            </div>
+          ) : doctorError ? (
+            <div className="empty-state">
+              <p>{doctorError}</p>
+
+              <button
+                className="primary-button"
+                onClick={() => window.location.reload()}
+                type="button"
+              >
+                Try Again
+              </button>
+            </div>
+          ) : doctors.length === 0 ? (
+            <div className="empty-state">
+              <Stethoscope size={35} />
+              <p>No available doctors at the moment.</p>
+            </div>
+          ) : (
+            <div className="doctor-grid">
+              {doctors.map(doctor => (
+                <article
+                  className="doctor-card"
+                  key={doctor.doctor_id}
+                >
+                  <div className="doctor-avatar">
+                    {doctor.first_name.charAt(0).toUpperCase()}
+                    {doctor.last_name.charAt(0).toUpperCase()}
+                  </div>
+
+                  <h3>
+                    Dr. {doctor.first_name} {doctor.last_name}
+                  </h3>
+
+                  <span>{doctor.specialization}</span>
+
+                  <p>
+                    Available for clinic appointments.
+                  </p>
+
+                  <button
+                    className="doctor-button"
+                    onClick={openBooking}
+                    type="button"
+                  >
+                    Book Appointment
+                    <ArrowRight size={15} />
+                  </button>
+                </article>
+              ))}
+            </div>
+          )}
         </section>
 
-        {/* BOOKING CALL TO ACTION */}
-        <section className="booking-banner">
-          <div>
-            <span>YOUR HEALTH JOURNEY STARTS HERE</span>
-            <h2>Ready to book your appointment?</h2>
-            <p>Request an appointment and let our receptionist assist you.</p>
-          </div>
-          <button className="white-button" onClick={openBooking}>
-            Book an Appointment <ArrowRight size={17} />
-          </button>
-        </section>
-
-        {/* CONTACT */}
+        {/* CLINIC INFORMATION */}
         <section className="contact-section" id="contact">
           <div>
             <span className="eyebrow">GET IN TOUCH</span>
-            <h2>We're here to help.</h2>
-            <p>Contact our clinic for questions and appointment assistance.</p>
+
+            <h2>
+              {clinicLoading
+                ? "Loading clinic information..."
+                : clinic.clinic_name}
+            </h2>
+
+            <p>
+              Contact our clinic for questions and appointment assistance.
+            </p>
           </div>
+
           <div className="contact-details">
-            <p><MapPin /> Your Clinic Address, Philippines</p>
-            <p><Phone /> Your clinic phone number</p>
-            <p><Mail /> clinic@example.com</p>
+            {clinicLoading ? (
+              <p>Loading contact details...</p>
+            ) : clinicError ? (
+              <p>{clinicError}</p>
+            ) : (
+              <>
+                {clinic.address && (
+                  <p>
+                    <MapPin />
+                    {clinic.address}
+                  </p>
+                )}
+
+                {clinic.contact_number && (
+                  <p>
+                    <Phone />
+                    {clinic.contact_number}
+                  </p>
+                )}
+
+                {clinic.email && (
+                  <p>
+                    <Mail />
+                    {clinic.email}
+                  </p>
+                )}
+
+                {!clinic.address &&
+                  !clinic.contact_number &&
+                  !clinic.email && (
+                    <p>
+                      Clinic contact information has not been provided yet.
+                    </p>
+                  )}
+              </>
+            )}
           </div>
         </section>
+
       </main>
 
       {/* FOOTER */}
       <footer className="footer">
         <a href="#home" className="brand footer-brand">
           <HeartPulse />
-          <span><strong>MediCare</strong><small>Family Clinic</small></span>
+
+          <span>
+            <strong>{clinic.clinic_name}</strong>
+            <small>Family Clinic</small>
+          </span>
         </a>
-        <p>© 2026 MediCare Family Clinic. All rights reserved.</p>
+
+        <p>
+          © {new Date().getFullYear()} {clinic.clinic_name}.
+          All rights reserved.
+        </p>
       </footer>
 
       {/* NOTIFICATION */}
       {message && (
         <div className="toast">
           <CheckCircle2 size={19} />
+
           <span>{message}</span>
-          <button onClick={() => setMessage("")}><X size={17} /></button>
+
+          <button
+            onClick={() => setMessage("")}
+            type="button"
+          >
+            <X size={17} />
+          </button>
         </div>
       )}
 
       {/* LOGIN AND REGISTER MODAL */}
       {authMode && (
-        <div className="modal-overlay" onClick={() => setAuthMode(null)}>
-          <div className="modal" onClick={event => event.stopPropagation()}>
-            <button className="close-button" onClick={() => setAuthMode(null)}><X /></button>
-            <div className="modal-icon"><HeartPulse size={30} /></div>
-            <h2>{authMode === "login" ? "Welcome Back" : "Create Your Account"}</h2>
-            <p>{authMode === "login" ? "Log in to manage your appointments." : "Register as a patient to get started."}</p>
+        <div
+          className="modal-overlay"
+          onClick={() => setAuthMode(null)}
+        >
+          <div
+            className="modal"
+            onClick={event => event.stopPropagation()}
+          >
+            <button
+              className="close-button"
+              onClick={() => setAuthMode(null)}
+              type="button"
+            >
+              <X />
+            </button>
 
-            <form onSubmit={authMode === "login" ? handleLogin : handleRegister}>
+            <div className="modal-icon">
+              <HeartPulse size={30} />
+            </div>
+
+            <h2>
+              {authMode === "login"
+                ? "Welcome Back"
+                : "Create Your Account"}
+            </h2>
+
+            <p>
+              {authMode === "login"
+                ? "Log in to manage your appointments."
+                : "Register as a patient to get started."}
+            </p>
+
+            <form
+              onSubmit={
+                authMode === "login"
+                  ? handleLogin
+                  : handleRegister
+              }
+            >
               {authMode === "register" && (
-                <label>
-                  Full Name
-                  <input name="name" type="text" placeholder="Enter your full name" required />
-                </label>
+                <>
+                  <label>
+                    First Name
+                    <input
+                      name="first_name"
+                      type="text"
+                      placeholder="Enter your first name"
+                      required
+                    />
+                  </label>
+
+                  <label>
+                    Middle Name
+                    <input
+                      name="middle_name"
+                      type="text"
+                      placeholder="Enter your middle name (optional)"
+                    />
+                  </label>
+
+                  <label>
+                    Last Name
+                    <input
+                      name="last_name"
+                      type="text"
+                      placeholder="Enter your last name"
+                      required
+                    />
+                  </label>
+
+                  <label>
+                    Birth Date
+                    <input
+                      name="birth_date"
+                      type="date"
+                      required
+                    />
+                  </label>
+
+                  <label>
+                    Sex
+                    <select
+                      name="sex"
+                      defaultValue=""
+                      required
+                    >
+                      <option value="" disabled>
+                        Select sex
+                      </option>
+
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </label>
+
+                  <label>
+                    Contact Number
+                    <input
+                      name="contact_number"
+                      type="tel"
+                      placeholder="09XXXXXXXXX"
+                      maxLength={11}
+                      required
+                    />
+                  </label>
+
+                  <label>
+                    Address
+                    <textarea
+                      name="address"
+                      placeholder="Enter your complete address"
+                      required
+                    />
+                  </label>
+                </>
               )}
+
               <label>
                 Email Address
-                <input name="email" type="email" placeholder="Enter your email" required />
+                <input
+                  name="email"
+                  type="email"
+                  placeholder="Enter your email"
+                  required
+                />
               </label>
+
               <label>
                 Password
-                <input name="password" type="password" minLength={6} placeholder="Enter your password" required />
+                <input
+                  name="password"
+                  type="password"
+                  minLength={8}
+                  placeholder="Enter your password"
+                  required
+                />
               </label>
-              <button className="primary-button full-button" type="submit">
-                {authMode === "login" ? "Log In" : "Create Account"}
+
+              {authMode === "register" && (
+                <label>
+                  Confirm Password
+                  <input
+                    name="confirm_password"
+                    type="password"
+                    minLength={8}
+                    placeholder="Confirm your password"
+                    required
+                  />
+                </label>
+              )}
+
+              <button
+                className="primary-button full-button"
+                type="submit"
+              >
+                {authMode === "login"
+                  ? "Log In"
+                  : "Create Account"}
               </button>
             </form>
 
             <p className="switch-auth">
-              {authMode === "login" ? "Don't have an account?" : "Already have an account?"}
-              <button onClick={() => { setMessage(""); setAuthMode(authMode === "login" ? "register" : "login"); }}>
-                {authMode === "login" ? " Register" : " Log In"}
+              {authMode === "login"
+                ? "Don't have an account?"
+                : "Already have an account?"}
+
+              <button
+                onClick={() => {
+                  setMessage("");
+
+                  setAuthMode(
+                    authMode === "login"
+                      ? "register"
+                      : "login"
+                  );
+                }}
+                type="button"
+              >
+                {authMode === "login"
+                  ? " Register"
+                  : " Log In"}
               </button>
             </p>
           </div>
@@ -468,54 +1470,120 @@ function App() {
 
       {/* APPOINTMENT FORM */}
       {showBooking && currentUser && (
-        <div className="modal-overlay" onClick={() => setShowBooking(false)}>
-          <div className="modal booking-modal" onClick={event => event.stopPropagation()}>
-            <button className="close-button" onClick={() => setShowBooking(false)}><X /></button>
-            <div className="modal-icon"><CalendarDays size={29} /></div>
+        <div
+          className="modal-overlay"
+          onClick={() => setShowBooking(false)}
+        >
+          <div
+            className="modal booking-modal"
+            onClick={event => event.stopPropagation()}
+          >
+            <button
+              className="close-button"
+              onClick={() => setShowBooking(false)}
+              type="button"
+            >
+              <X />
+            </button>
+
+            <div className="modal-icon">
+              <CalendarDays size={29} />
+            </div>
+
             <h2>Request an Appointment</h2>
-            <p>Choose your preferred doctor and schedule.</p>
+
+            <p>
+              Choose your preferred doctor and schedule.
+            </p>
 
             <form onSubmit={handleBooking}>
               <label>
                 Patient Name
-                <input value={currentUser.name} readOnly />
+                <input
+                  value={getPatientName(currentUser)}
+                  readOnly
+                />
               </label>
+
               <label>
                 Select Doctor
-                <select name="doctor" required defaultValue="">
-                  <option value="" disabled>Select a doctor</option>
+                <select
+                  name="doctor"
+                  required
+                  defaultValue=""
+                >
+                  <option value="" disabled>
+                    Select a doctor
+                  </option>
+
                   {doctors.map(doctor => (
-                    <option key={doctor.name} value={doctor.name}>
-                      {doctor.name} - {doctor.specialty}
+                    <option
+                      key={doctor.doctor_id}
+                      value={doctor.doctor_id}
+                    >
+                      Dr. {doctor.first_name} {doctor.last_name}
+                      {" - "}
+                      {doctor.specialization}
                     </option>
                   ))}
                 </select>
               </label>
+
               <div className="form-row">
                 <label>
                   Preferred Date
-                  <input name="date" type="date" min={today} required />
+                  <input
+                    name="date"
+                    type="date"
+                    min={today}
+                    required
+                  />
                 </label>
+
                 <label>
                   Preferred Time
-                  <select name="time" required defaultValue="">
-                    <option value="" disabled>Select time</option>
-                    <option>09:00 AM</option>
-                    <option>10:00 AM</option>
-                    <option>11:00 AM</option>
-                    <option>01:00 PM</option>
-                    <option>02:00 PM</option>
-                    <option>03:00 PM</option>
+                  <select
+                    name="time"
+                    required
+                    defaultValue=""
+                  >
+                    <option value="" disabled>
+                      Select time
+                    </option>
+
+                    <option value="09:00">09:00 AM</option>
+                    <option value="09:30">09:30 AM</option>
+                    <option value="10:00">10:00 AM</option>
+                    <option value="10:30">10:30 AM</option>
+                    <option value="11:00">11:00 AM</option>
+                    <option value="11:30">11:30 AM</option>
+                    <option value="13:30">01:30 PM</option>
+                    <option value="14:00">02:00 PM</option>
+                    <option value="14:30">02:30 PM</option>
+                    <option value="15:00">03:00 PM</option>
+                    <option value="15:30">03:30 PM</option>
+                    <option value="16:00">04:00 PM</option>
+                    <option value="16:30">04:30 PM</option>
                   </select>
                 </label>
               </div>
+
               <label>
                 Reason for Appointment
-                <textarea name="reason" placeholder="Briefly describe your reason for visiting" required />
+                <textarea
+                  name="reason"
+                  placeholder="Briefly describe your reason for visiting"
+                  required
+                />
               </label>
-              <button className="primary-button full-button" type="submit">
+
+              <button
+                className="primary-button full-button"
+                type="submit"
+              >
                 Submit Appointment Request
               </button>
+
               <small className="form-note">
                 Your request will remain pending until reviewed by the receptionist.
               </small>
@@ -526,32 +1594,79 @@ function App() {
 
       {/* PATIENT APPOINTMENTS */}
       {showAppointments && currentUser && (
-        <div className="modal-overlay" onClick={() => setShowAppointments(false)}>
-          <div className="modal appointments-modal" onClick={event => event.stopPropagation()}>
-            <button className="close-button" onClick={() => setShowAppointments(false)}><X /></button>
-            <div className="modal-icon"><ClipboardList size={29} /></div>
+        <div
+          className="modal-overlay"
+          onClick={() => setShowAppointments(false)}
+        >
+          <div
+            className="modal appointments-modal"
+            onClick={event => event.stopPropagation()}
+          >
+            <button
+              className="close-button"
+              onClick={() => setShowAppointments(false)}
+              type="button"
+            >
+              <X />
+            </button>
+
+            <div className="modal-icon">
+              <ClipboardList size={29} />
+            </div>
+
             <h2>My Appointments</h2>
-            <p>Welcome, {currentUser.name}. Here are your appointment requests.</p>
+
+            <p>
+              Welcome, {getPatientName(currentUser)}. Here are your appointment requests.
+            </p>
 
             {myAppointments.length === 0 ? (
               <div className="empty-state">
                 <CalendarDays size={35} />
-                <p>You don't have any appointment requests yet.</p>
-                <button className="primary-button" onClick={() => { setShowAppointments(false); openBooking(); }}>
+
+                <p>
+                  You don't have any appointment requests yet.
+                </p>
+
+                <button
+                  className="primary-button"
+                  onClick={() => {
+                    setShowAppointments(false);
+                    openBooking();
+                  }}
+                  type="button"
+                >
                   Book an Appointment
                 </button>
               </div>
             ) : (
               <div className="appointment-list">
                 {myAppointments.map(appointment => (
-                  <article className="appointment-card" key={appointment.id}>
+                  <article
+                    className="appointment-card"
+                    key={appointment.id}
+                  >
                     <div className="appointment-card-top">
                       <strong>{appointment.doctor}</strong>
-                      <span className="status-pending">{appointment.status}</span>
+
+                      <span className="status-pending">
+                        {appointment.status}
+                      </span>
                     </div>
-                    <p><CalendarDays size={15} /> {appointment.date}</p>
-                    <p><Clock size={15} /> {appointment.time}</p>
-                    <p>Reason: {appointment.reason}</p>
+
+                    <p>
+                      <CalendarDays size={15} />
+                      {appointment.date}
+                    </p>
+
+                    <p>
+                      <Clock size={15} />
+                      {appointment.time}
+                    </p>
+
+                    <p>
+                      Reason: {appointment.reason}
+                    </p>
                   </article>
                 ))}
               </div>
@@ -559,6 +1674,7 @@ function App() {
           </div>
         </div>
       )}
+
     </div>
   );
 }

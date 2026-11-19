@@ -27,7 +27,7 @@ export const getAllPatients = async (req, res) => {
           p.address,
           p.created_at
         FROM patients p
-        INNER JOIN users u ON p.user_id = u.user_id
+LEFT JOIN users u ON p.user_id = u.user_id
         WHERE (
           ? = ''
           OR CAST(p.patient_id AS CHAR) LIKE ?
@@ -97,8 +97,8 @@ export const getPatientById = async (req, res) => {
           p.contact_number,
           p.address,
           p.created_at
-        FROM patients p
-        INNER JOIN users u ON p.user_id = u.user_id
+       FROM patients p
+LEFT JOIN users u ON p.user_id = u.user_id
         WHERE p.patient_id = ?
       `,
       [patientId]

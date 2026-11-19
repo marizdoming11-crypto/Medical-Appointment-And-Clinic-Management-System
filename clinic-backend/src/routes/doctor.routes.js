@@ -16,10 +16,12 @@ import {
 
 const router = Router();
 
-// All doctor management endpoints require admin access.
+// Public: display available doctors on the patient landing page.
+router.get("/", getAllDoctors);
+
+// Admin-only doctor management.
 router.use(authenticateToken, authorizeRoles("admin"));
 
-router.get("/", getAllDoctors);
 router.get("/:id", getDoctorById);
 router.post("/", addDoctor);
 router.put("/:id", updateDoctor);

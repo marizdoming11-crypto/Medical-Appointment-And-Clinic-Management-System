@@ -52,6 +52,14 @@ type Schedule = {
   slot_duration: number;
 };
 
+type PatientNotification = {
+  notification_id: number;
+  title: string;
+  message: string;
+  is_read: number | boolean;
+  created_at: string;
+};
+
 type MedicalRecord = {
   record_id: number;
   diagnosis: string;
@@ -80,6 +88,12 @@ type Props = {
   medicalRecordsLoading: boolean;
   medicalRecordsError: string;
   onRefreshMedicalRecords: () => Promise<void>;
+  notifications: PatientNotification[];
+  notificationsLoading: boolean;
+  notificationsError: string;
+  onRefreshNotifications: () => Promise<void>;
+  onMarkNotificationAsRead: (notificationId: number) => Promise<void>;
+  onMarkAllNotificationsAsRead: () => Promise<void>;
   onLogout: () => void;
   onSubmitBooking: (event: FormEvent<HTMLFormElement>) => Promise<boolean>;
   onCancelAppointment: (appointmentId: string) => void;
@@ -107,6 +121,12 @@ export default function PatientDashboard({
   medicalRecordsLoading,
   medicalRecordsError,
   onRefreshMedicalRecords,
+  notifications,
+  notificationsLoading,
+  notificationsError,
+  onRefreshNotifications,
+  onMarkNotificationAsRead,
+  onMarkAllNotificationsAsRead,
   onLogout,
   onSubmitBooking,
   onCancelAppointment,
@@ -190,6 +210,10 @@ export default function PatientDashboard({
       return slots;
     });
 
+  const unreadNotifications = notifications.filter(
+    notification => !Boolean(Number(notification.is_read))
+  ).length;
+
   const patient = user.patient;
   const fullName = patient
     ? `${patient.first_name} ${patient.last_name}`
@@ -259,8 +283,8 @@ export default function PatientDashboard({
                 <span className="stat-icon orange">♢</span>
                 <div>
                   <h3>Notifications</h3>
-                  <p>—</p>
-                  <small>Your notifications will appear here</small>
+                  <p>{unreadNotifications}</p>
+                  <small>Unread notifications</small>
                 </div>
               </button>
             </div>
@@ -549,13 +573,87 @@ export default function PatientDashboard({
       case "Notifications":
         return (
           <div className="patient-content-card">
-            <h1>Notifications</h1>
-            <p>Stay updated with important clinic announcements.</p>
-            <div className="patient-empty-state">
-              <div className="empty-icon">♢</div>
-              <h3>No Notifications Yet</h3>
-              <p>You will see appointment updates and other clinic notifications here.</p>
+            <div className="patient-page-header">
+              <div>
+                <h1>Notifications</h1>
+                <p>Stay updated with appointment changes from the clinic.</p>
+                <small>{unreadNotifications} unread notification(s)</small>
+              </div>
+              <div className="patient-quick-actions">
+                <button
+                  className="patient-secondary-btn"
+                  type="button"
+                  onClick={onRefreshNotifications}
+                  disabled={notificationsLoading}
+                >
+                  {notificationsLoading ? "Refreshing..." : "Refresh"}
+                </button>
+                {unreadNotifications > 0 && (
+                  <button
+                    className="patient-primary-btn"
+                    type="button"
+                    onClick={onMarkAllNotificationsAsRead}
+                  >
+                    Mark All as Read
+                  </button>
+                )}
+              </div>
             </div>
+
+            {notificationsError && (
+              <p className="booking-feedback" role="alert">{notificationsError}</p>
+            )}
+
+            {notificationsLoading ? (
+              <div className="patient-empty-state">
+                <h3>Loading notifications...</h3>
+              </div>
+            ) : notifications.length === 0 ? (
+              <div className="patient-empty-state">
+                <div className="empty-icon">♢</div>
+                <h3>No Notifications Yet</h3>
+                <p>You will see appointment updates here when the clinic reviews your requests.</p>
+              </div>
+            ) : (
+              <div className="patient-appointment-list">
+                {notifications.map(notification => {
+                  const isUnread = !Boolean(Number(notification.is_read));
+
+                  return (
+                    <article
+                      className="patient-appointment-card"
+                      key={notification.notification_id}
+                      style={{
+                        borderLeft: isUnread ? "4px solid #2563eb" : "4px solid #d1d5db",
+                        background: isUnread ? "#f8fbff" : "#ffffff"
+                      }}
+                    >
+                      <div className="appointment-card-heading">
+                        <strong>{notification.title}</strong>
+                        <span className="appointment-status">
+                          {isUnread ? "Unread" : "Read"}
+                        </span>
+                      </div>
+                      <p>{notification.message}</p>
+                      <small>
+                        {notification.created_at
+                          ? new Date(notification.created_at).toLocaleString()
+                          : ""}
+                      </small>
+                      {isUnread && (
+                        <button
+                          className="patient-secondary-btn"
+                          type="button"
+                          onClick={() => onMarkNotificationAsRead(notification.notification_id)}
+                        >
+                          Mark as Read
+                        </button>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+            )}
           </div>
         );
 
@@ -621,6 +719,22 @@ export default function PatientDashboard({
                 {item === "My Profile" && "◉"}
               </span>
               {item}
+              {item === "Notifications" && unreadNotifications > 0 && (
+                <span
+                  style={{
+                    marginLeft: "auto",
+                    minWidth: 20,
+                    padding: "2px 6px",
+                    borderRadius: 999,
+                    background: "#dc2626",
+                    color: "#ffffff",
+                    fontSize: 11,
+                    textAlign: "center"
+                  }}
+                >
+                  {unreadNotifications}
+                </span>
+              )}
             </button>
           ))}
         </nav>

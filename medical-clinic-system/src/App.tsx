@@ -106,6 +106,20 @@ type PatientMedicalRecordsResponse = {
   records: MedicalRecord[];
 };
 
+type PatientNotification = {
+  notification_id: number;
+  title: string;
+  message: string;
+  is_read: number | boolean;
+  created_at: string;
+};
+
+type PatientNotificationsResponse = {
+  success: boolean;
+  message?: string;
+  notifications: PatientNotification[];
+};
+
 type DoctorsResponse = {
   success: boolean;
   total?: number;
@@ -210,6 +224,10 @@ function App() {
   const [bookingServices, setBookingServices] = useState<Service[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [medicalRecords, setMedicalRecords] = useState<MedicalRecord[]>([]);
+  const [notifications, setNotifications] = useState<PatientNotification[]>([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [notificationsError, setNotificationsError] = useState("");
+
   const [medicalRecordsLoading, setMedicalRecordsLoading] = useState(false);
   const [medicalRecordsError, setMedicalRecordsError] = useState("");
   const [bookingOptionsLoading, setBookingOptionsLoading] = useState(false);
@@ -353,10 +371,11 @@ function App() {
           Authorization: `Bearer ${authToken}`
         };
 
-        const [optionsResponse, appointmentsResponse, recordsResponse] = await Promise.all([
+        const [optionsResponse, appointmentsResponse, recordsResponse, notificationsResponse] = await Promise.all([
           fetch(`${API_URL}/patient-portal/booking-options`, { headers }),
           fetch(`${API_URL}/patient-portal/appointments`, { headers }),
-          fetch(`${API_URL}/patient-portal/medical-records`, { headers })
+          fetch(`${API_URL}/patient-portal/medical-records`, { headers }),
+          fetch(`${API_URL}/patient-portal/notifications`, { headers })
         ]);
 
         const optionsData: PatientPortalOptionsResponse =
@@ -365,6 +384,8 @@ function App() {
           await appointmentsResponse.json();
         const recordsData: PatientMedicalRecordsResponse =
           await recordsResponse.json();
+        const notificationsData: PatientNotificationsResponse =
+          await notificationsResponse.json();
 
         if (!optionsResponse.ok || !optionsData.success) {
           throw new Error(
@@ -384,6 +405,12 @@ function App() {
           );
         }
 
+        if (!notificationsResponse.ok || !notificationsData.success) {
+          throw new Error(
+            notificationsData.message || "Unable to load your notifications."
+          );
+        }
+
         if (cancelled) return;
 
         setDoctors(
@@ -396,6 +423,8 @@ function App() {
         setSchedules(optionsData.schedules || []);
         setMedicalRecords(recordsData.records || []);
         setMedicalRecordsError("");
+        setNotifications(notificationsData.notifications || []);
+        setNotificationsError("");
 
         setAppointments(
           (appointmentsData.appointments || []).map(item => ({
@@ -429,6 +458,91 @@ function App() {
       cancelled = true;
     };
   }, [authToken, currentUser]);
+
+  // ==============================
+  // PATIENT NOTIFICATIONS
+  // ==============================
+
+  async function handleRefreshNotifications() {
+    if (!authToken) return;
+
+    try {
+      setNotificationsLoading(true);
+      setNotificationsError("");
+
+      const response = await fetch(`${API_URL}/patient-portal/notifications`, {
+        headers: { Authorization: `Bearer ${authToken}` }
+      });
+      const data: PatientNotificationsResponse = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "Unable to load your notifications.");
+      }
+
+      setNotifications(data.notifications || []);
+    } catch (error) {
+      console.error("Notifications loading error:", error);
+      setNotificationsError(getErrorMessage(error));
+    } finally {
+      setNotificationsLoading(false);
+    }
+  }
+
+  async function handleMarkNotificationAsRead(notificationId: number) {
+    if (!authToken) return;
+
+    try {
+      const response = await fetch(
+        `${API_URL}/patient-portal/notifications/${notificationId}/read`,
+        {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${authToken}` }
+        }
+      );
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "Unable to update notification.");
+      }
+
+      setNotifications(current =>
+        current.map(item =>
+          item.notification_id === notificationId
+            ? { ...item, is_read: 1 }
+            : item
+        )
+      );
+    } catch (error) {
+      console.error("Mark notification as read error:", error);
+      setNotificationsError(getErrorMessage(error));
+    }
+  }
+
+  async function handleMarkAllNotificationsAsRead() {
+    if (!authToken) return;
+
+    try {
+      const response = await fetch(
+        `${API_URL}/patient-portal/notifications/mark-all-read`,
+        {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${authToken}` }
+        }
+      );
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "Unable to update notifications.");
+      }
+
+      setNotifications(current =>
+        current.map(item => ({ ...item, is_read: 1 }))
+      );
+    } catch (error) {
+      console.error("Mark all notifications as read error:", error);
+      setNotificationsError(getErrorMessage(error));
+    }
+  }
 
   // ==============================
   // REFRESH PATIENT MEDICAL RECORDS
@@ -715,6 +829,8 @@ function App() {
     setAppointments([]);
     setBookingServices([]);
     setSchedules([]);
+    setNotifications([]);
+    setNotificationsError("");
 
     setShowAppointments(false);
     setShowBooking(false);
@@ -934,6 +1050,12 @@ function App() {
         medicalRecordsLoading={medicalRecordsLoading}
         medicalRecordsError={medicalRecordsError}
         onRefreshMedicalRecords={handleRefreshMedicalRecords}
+        notifications={notifications}
+        notificationsLoading={notificationsLoading}
+        notificationsError={notificationsError}
+        onRefreshNotifications={handleRefreshNotifications}
+        onMarkNotificationAsRead={handleMarkNotificationAsRead}
+        onMarkAllNotificationsAsRead={handleMarkAllNotificationsAsRead}
         onLogout={handleLogout}
         onSubmitBooking={handleBooking}
         onCancelAppointment={handleCancelAppointment}
